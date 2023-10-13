@@ -1,0 +1,41 @@
+##############################################################
+#       Big Data y Machine Learning                          #
+#       Taller 2                                             #
+##############################################################
+
+#-------------------------------------------
+# Load packages
+pkg <- list("dplyr", "tidyverse", "sf", "leaflet", "Rcpp")
+lapply(pkg, require, character.only = T)
+rm(pkg)
+
+# Clean environment
+rm(list = ls())
+#-------------------------------------------
+
+# Load data ---------------------------------
+test_data <- read_csv("stores/test.csv")
+train_data <- read_csv("stores/train.csv")
+
+#Append data
+train_data <- train_data %>% mutate(type = "train")
+test_data <- test_data %>% mutate(type = "test")
+
+data <- rbind(train_data, test_data)
+
+
+# Spatial data ---------------------------------
+sp_data <- st_as_sf(data, coords = c("lon", "lat"), crs = 4326)
+
+factpal <- colorFactor(palette = c("red", "purple"), sp_data$type)
+
+leaflet() %>%
+  addTiles() %>%
+  addCircles(data = sp_data, color = ~factpal(type)) %>%
+  addLegend("bottomright", colors = c('red', 'purple'), values = ~type,
+            title = "Type of sample",
+            labels = c("Test", "Train"),
+            opacity = 1
+  )
+
+
