@@ -20,20 +20,43 @@ sapply(df, function(x) sum(is.na(x)))
 
 #Revisamos distribución de datos en variables que tienen NaN's
 
-descriptive_statistics <- stargazer(df,
-                                    type = "text", min.max = TRUE, mean.sd = TRUE,
-                                    nobs = TRUE, median = TRUE, iqr = FALSE,
-                                    digits = 1, align = T,
-                                    title = "Summary Statistics",
-                                    covariate.labels = c("Ingreso por Hora", "Edad", "Sexo", "Clase", "Departamento", "Formalidad", "Máximo Nivel Educativo Alcanzado", "Oficio", "Total de Horas Trabajadas"),
-                                    out="outputs/summ_statistics.tex"
 
-ggplot(df, aes(x=surface_total)) + geom_boxplot()
+distributionSurfaceTotal <- function (surface_totall) {
+  N = length(df$surface_total)
+  surface_totall <- na.omit(df$surface_total)
+  hist( df$surface_total,col = "light blue")
+}
 
-ggplot(df, aes(x=surface_total)) +
-  geom_histogram(binwidth=.5, colour="black", fill="white")
+distributionSurfaceTotal()
 
-df$surface_total %>%
-  table(useNA = "ifany") %>%
-  prop.table() %>%
-  round(3)*10
+#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con moda.
+
+distributionSurfaceCovered <- function (surface_coveredd) {
+  N = length(df$surface_covered)
+  surface_coveredd <- na.omit(df$surface_covered)
+  hist( df$surface_covered,col = "light blue")
+}
+
+distributionSurfaceCovered()
+
+#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con moda.
+
+distributionRooms <- function (rooms) {
+  N = length(df$rooms)
+  rooms <- na.omit(df$rooms)
+  hist( df$rooms,col = "light blue")
+}
+
+distributionRooms()
+
+#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con moda.
+
+distributionBathrooms <- function (bathrooms) {
+  N = length(df$bathrooms)
+  bathrooms <- na.omit(df$bathrooms)
+  hist( df$bathrooms,col = "light blue")
+}
+
+distributionBathrooms()
+
+#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con moda.
