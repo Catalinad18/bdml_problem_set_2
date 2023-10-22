@@ -3,7 +3,7 @@
 #Cargamos paquetes requeridos
 
 library(pacman)
-p_load(tidyverse, tidymodels, glmnet, stargazer, dplyr)
+p_load(tidyverse, rio, tidymodels, glmnet, stargazer, dplyr)
 
 #Cargamos data-frames
 
@@ -159,17 +159,24 @@ df_test <- df_test %>%
 
 #train
 
+#df <- df %>%
+  #mutate(property_typed = ifelse(df$property_type == "Casa", 1, 0))
+
 df <- df %>%
-  mutate(property_typed = ifelse(df$property_type == "Casa", 1, 0))
+  mutate(property_type = case_when(property_type == "Apartamento" ~ 1,
+                                   property_type == "Casa" ~ 0)
+         )
 
 #test
 
 df_test <- df_test %>%
-  mutate(property_typed = ifelse(df_test$property_type == "Casa", 1, 0))
+  mutate(property_type = case_when(property_type == "Apartamento" ~ 1,
+                                   property_type == "Casa" ~ 0)
+  )
 
 ##Receta 1, OLS
 
-rec1 <- recipe(price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_typed, data = df)
+rec1 <- recipe(price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_type, data = df)
 
 lm_mod <- linear_reg()
 
@@ -216,3 +223,75 @@ individual_rmse2.1 <- fit_res2.1 %>%
 individual_rmse2.1
 
 mean(individual_rmse2.1$.estimate)
+
+#Ridge y Lasso para selección de variables
+
+##Ridge
+
+ridge_spec <- linear_reg(mixture = 0, penalty = 0) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+ridge_fit <- fit(ridge_spec, price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_type, data = df)
+
+#Visualizar
+
+tidy(ridge_fit)
+
+tidy(ridge_fit, penalty = 28000000000000000000)
+
+ridge_fit %>%
+  autoplot()
+
+#Predicción Ridge
+
+predict(ridge_fit, new_data = df)
+predict(ridge_fit, new_data = df, penalty = 5000000000000000000000000000)
+
+#K-fold para hallar el valor óptimo del lambda
+
+#El objeto folds ya está creado
+
+ridge_recipe <- 
+  recipe(formula = price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_type, data = df) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  #step_interact(terms = ~ property_type:surface_total + property_type:surface_covered + property_type:rooms + property_type:bedrooms + property_type:bathrooms) %>%
+  step_novel(all_nominal_predictors()) %>%
+  step_zv(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+ridge_spec2 <- linear_reg(penalty = tune(), mixture = 0) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+ridge_workflow <- workflow() %>%
+  add_recipe(ridge_recipe) %>%
+  add_model(ridge_spec2)
+
+penalty_grid <- grid_regular(penalty(range = c(-4, 1)), levels = 30)
+
+penalty_grid
+
+tune_res <- tune_grid(
+  ridge_workflow,
+  resamples = folds,
+  grid = penalty_grid,
+  metrics = metric_set(rmse)
+)
+
+tune_res
+
+autoplot(tune_res)
+
+collect_metrics(tune_res)
+
+best_penalty <- select_best(tune_res, metric = "rmse")
+
+best_penalty
+
+ridge_final <- finalize_workflow(ridge_workflow, best_penalty)
+
+ridge_final_fit <- fit(ridge_final, data = df)
+
+augment(ridge_final_fit, new_data = df) %>%
+  rmse(truth = price, estimate = .pred)
