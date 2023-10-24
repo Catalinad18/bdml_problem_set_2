@@ -51,7 +51,7 @@ distributionRooms <- function (rooms) {
 
 distributionRooms()
 
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
+#Vemos que hay una distribución asimétrica, y aunque más normalizada, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
 
 distributionBathrooms <- function (bathrooms) {
   N = length(df$bathrooms)
@@ -61,7 +61,18 @@ distributionBathrooms <- function (bathrooms) {
 
 distributionBathrooms()
 
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
+#Vemos que hay una distribución asimétrica y echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
+
+distributionBedrooms <- function (bedrooms) {
+  N = length(df$bedrooms)
+  bedrooms <- na.omit(df$bedrooms)
+  hist( df$bedrooms,col = "light blue")
+}
+
+distributionBedrooms()
+
+#Vemos que hay una distribución asimétrica, y aunque más normalizada, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
+
 
 ##Distribución variable dependiente
 
@@ -74,6 +85,44 @@ distributionPrice <- function (pricee) {
 distributionPrice()
 
 #Posee una distribución asimétrica hacia la izquierda, por lo que haremos una transformación logarítmica
+#Revisamos posibles outliers
+
+summary(df$price) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  mutate(V1 = scales::dollar(V1))
+
+#V1
+#Min.      $300,000,000
+#1st Qu.   $415,000,000
+#Median    $559,990,000
+#Mean      $654,534,675
+#3rd Qu.   $810,000,000
+#Max.    $1,650,000,000
+
+#Como vemos que el valor máximo casi que dupica el tercer cuantil, revisamos que no sean errores o datos sin sentido, viendo la distribución del precio del metro cuadrado
+
+df <- df %>%
+  mutate(precio_por_mt2 = round(price / surface_total, 0))
+
+summary(df$precio_por_mt2) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  mutate(V1 = scales::dollar(V1))
+
+#Vemos que hay un valor mínimo de $20,424 y uno máximo de $40,450,000 por metro cuadrado, lo cual, a todas luces es extraordinariamente alto.
+#Estableceremos un rango mínimo de $700,000 máximo de $15,000,000 por metro cuadrado (según estimaciones, por barrio, el metro cuadrado más caro de Bogotá ronda alrededor de $7,145,435, y el más barato, alrededor de $873.138. Por ello dejaremos un poco de espacio para evitar sesgo, pero sí para eliminar valores irreales que puedan perjudicar las predicciones)
+
+df <- df %>%
+  filter(between(precio_por_mt2, 700000,  15e6))
+
+#Visualizamos la nueva distribución de la variable dependiente.
+
+p <- ggplot(df, aes(x = price)) +
+  geom_histogram(fill = "darkblue", alpha = 0.4) +
+  theme_bw()
+
+p
 
 #df <- df %>% mutate(price = log(price))
 
@@ -117,20 +166,38 @@ distributionBathroomsTest <- function (bathrooms) {
 
 distributionBathroomsTest()
 
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
+#Vemos que hay una distribución asimétrica, aunque algo más normalizada, pero echada a la izquierda. Imputaremos con mediana.
+
+distributionBedroomsTest <- function (bedrooms) {
+  N = length(df_test$bedrooms)
+  bedrooms <- na.omit(df_test$bedrooms)
+  hist( df_test$bedrooms,col = "light blue")
+}
+
+distributionBedroomsTest()
+
+#Vemos que hay una distribución asimétrica, aunque algo más normalizada, pero echada a la izquierda. Imputaremos con mediana.
 
 ##Imputación
 
-#Cálculos de medianas
+#Cálculos de modas y medianas
 
 #train
+
+df %>%count(rooms) %>% head() #La moda es 3
+df %>%count(bathrooms) %>% head() #La moda es 2
+df %>%count(bedrooms) %>% head() #La moda es 3
 
 mediana_sup_cubierta <- median(df$surface_covered, na.rm = TRUE) #108
 mediana_sup_total <- median(df$surface_total, na.rm = TRUE) #119
 mediana_bathrooms <- median(df$bathrooms, na.rm = TRUE) #3
-mediana_rooms <- median(df$rooms, na.rm = TRUE) #2
+mediana_rooms <- median(df$rooms, na.rm = TRUE) #3
 
 #test
+
+df_test %>%count(rooms) %>% head() #La moda es 3
+df_test %>%count(bathrooms) %>% head() #La moda es 2
+df_test %>%count(bedrooms) %>% head() #La moda es 3
 
 mediana_sup_cubierta_test <- median(df_test$surface_covered, na.rm = TRUE) #118
 mediana_sup_total_test <- median(df_test$surface_total, na.rm = TRUE) #120
@@ -142,16 +209,18 @@ mediana_rooms_test <- median(df_test$rooms, na.rm = TRUE) #2
 #train
 
 df <- df %>%
-  mutate(rooms = replace_na(rooms, 2),
-         bathrooms = replace_na(bathrooms, 3),
+  mutate(rooms = replace_na(rooms, 3),
+         bathrooms = replace_na(bathrooms, 2),
+         bedrooms = replace_na(bedrooms, 3),
          surface_covered = replace_na(surface_covered, mediana_sup_cubierta),
          surface_total = replace_na(surface_total, mediana_sup_total),)
 
 #test
 
 df_test <- df_test %>%
-  mutate(rooms = replace_na(rooms, 2),
-         bathrooms = replace_na(bathrooms, 3),
+  mutate(rooms = replace_na(rooms, 3),
+         bathrooms = replace_na(bathrooms, 2),
+         bedrooms = replace_na(bedrooms, 3),
          surface_covered = replace_na(surface_covered, mediana_sup_cubierta_test),
          surface_total = replace_na(surface_total, mediana_sup_total_test),)
 
@@ -201,8 +270,13 @@ fit1.1 <- wfl1 %>%
 
 ##Predicción
 
-test_predict <- predict(fit1.1, new_data = test) %>%
-  bind_cols(test)
+test_predict <- predict(fit1.1, new_data = df_test) %>%
+  bind_cols(df_test)
+
+test_predict1 <- test_predict[,c("property_id", ".pred")]
+colnames(test_predict1) <- c("property_id", "price")
+
+write_csv(test_predict1, "modelo1.csv")
 
 ##RMSE promedio K-fold
 
@@ -293,5 +367,76 @@ ridge_final <- finalize_workflow(ridge_workflow, best_penalty)
 
 ridge_final_fit <- fit(ridge_final, data = df)
 
+fit1.1 <- wfl1 %>%
+  fit(data=train)
+
+##Predicción Ridge
+
+test_predict2 <- predict(ridge_final_fit, new_data = df_test) %>%
+  bind_cols(df_test)
+
+test_predict3 <- test_predict2[,c("property_id", ".pred")]
+colnames(test_predict3) <- c("property_id", "price")
+
+write_csv(test_predict3, "modelo2_ridge.csv")
+
 augment(ridge_final_fit, new_data = df) %>%
   rmse(truth = price, estimate = .pred)
+
+##LASSO
+
+lasso_recipe <- 
+  recipe(formula = price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_type, data = df) %>% 
+  #step_interact(terms = ~ property_type:surface_total + property_type:surface_covered + property_type:rooms + property_type:bedrooms + property_type:bathrooms) %>% 
+  step_novel(all_nominal_predictors()) %>% 
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>% 
+  step_normalize(all_predictors())
+
+lasso_spec <- 
+  linear_reg(penalty = tune(), mixture = 1) %>%
+  set_mode("regression") %>%
+  set_engine("glmnet")
+
+lasso_fit <- fit(lasso_spec, price ~ surface_total + surface_covered + rooms + bedrooms + bathrooms + property_type, data = df)
+
+tidy(lasso_fit, penalty = 0)
+
+tidy(lasso_fit, penalty = 28000000000000000000)
+
+lasso_fit %>%
+  autoplot()
+
+lasso_workflow <- workflow() %>%
+  add_recipe(lasso_recipe) %>%
+  add_model(lasso_spec)
+
+penalty_grid_lasso <- grid_regular(penalty(range = c(-10, 10)), levels = 50)
+
+tune_res_lasso <- tune_grid(
+  lasso_workflow,
+  resamples = folds, 
+  grid = penalty_grid,
+  metrics = metric_set(rmse)
+)
+
+autoplot(tune_res_lasso)
+
+best_penalty_lasso <- select_best(tune_res_lasso, metric = "rmse")
+
+lasso_final <- finalize_workflow(lasso_workflow, best_penalty_lasso)
+
+lasso_final_fit <- fit(lasso_final, data = df)
+
+augment(lasso_final_fit, new_data = df) %>%
+  rmse(truth = price , estimate = .pred)
+
+test_predict4 <- predict(lasso_final_fit, new_data = df_test) %>%
+  bind_cols(df_test)
+
+#Predicción LASSO
+
+test_predict4 <- test_predict4[,c("property_id", ".pred")]
+colnames(test_predict4) <- c("property_id", "price")
+
+write_csv(test_predict4, "modelo3_lasso.csv")
