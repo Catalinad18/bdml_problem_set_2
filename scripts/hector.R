@@ -459,9 +459,46 @@ for (i in 1:3) {
 
 #Estimaciones con OLS, desisto de Ridge, Lasso, Elastic por la cantidad de predictores. 
 
-### Más variables OSM 
+### Más variables OSM ----------------------------------------------------------------
+
+setwd("/Users/hectorsegura/Documentos/GitHub/bdml_problem_set_2/")
+
+#Primero el mapa de Bogotá y ubicar las UPL
+upl_bog <- st_read("stores/unidadplaneamientolocal.gpkg") %>%
+  st_transform(crs=4326) %>%
+  select(c(NOMBRE, SECTOR, SHAPE)) 
+
+db_sf <- db_sf %>%
+  st_join(upl_bog, left = T, join=st_intersects) 
+
+bbox_bog <- st_bbox(upl_bog)
+
+source("scripts/functions_OSM.R")
+
+#Zonas comerciales 
+zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
+db$dist_zcomer <- nearest_amenity(db_sf, zcomer_bog_points)
+
+#Zonas industriales
+zindus_bog_points <- retrieve_amenities(bbox_bog, "landuse", "industrial", "polygons")
+db$dist_zindus <- nearest_amenity(db_sf, zindus_bog_points)
+
+#Aeropuerto
+airport_bog_points <- retrieve_amenities(bbox_bog, "aeroway", "aerodrome", "polygons")
+db$dist_airport <- nearest_amenity(db_sf, airport_bog_points)
+
+#Universidades 
+uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
+db$dist_uni <- nearest_amenity(db_sf, uni_bog_points)
+
+#
 
 
+
+
+checkOSM <- opq(bbox = getbb("Bogotá Colombia")) %>%
+  add_osm_feature(key = "landuse", value = "commercial") %>%
+  osmdata_sf()
 
 
 
