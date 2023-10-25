@@ -459,3 +459,10 @@ for (i in 1:3) {
 
 #Estimaciones con OLS, desisto de Ridge, Lasso, Elastic por la cantidad de predictores. 
 
+### Más variables OSM 
+
+
+
+
+
+
