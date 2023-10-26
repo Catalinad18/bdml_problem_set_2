@@ -514,7 +514,7 @@ sp_data$dist_airport <- nearest_amenity(sp_data, airport_bog_points)
 
 #Universidades 
 uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
-sp_data$dist_uni <- nearest_amenity(sp_data, uni_bog_points)
+sp_data$dist_university <- nearest_amenity(sp_data, uni_bog_points)
 
 #Hospitales ya está en variables.R 
 
