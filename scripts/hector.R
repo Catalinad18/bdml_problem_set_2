@@ -465,6 +465,11 @@ for (i in 1:3) {
 
 sp_data <- db_sf 
 
+write_csv(sp_data, file = "sp_dataH.csv")
+
+sp_data <- read.csv("/Users/hectorsegura/Documentos/Big Data & ML/sp_dataH.csv")
+sp_data <- st_as_sf(sp_data, coords = c("lon", "lat"), crs = 4326)
+
 setwd("/Users/hectorsegura/Documentos/GitHub/bdml_problem_set_2/")
 
 #Primero el mapa de Bogotá y ubicar las UPL
@@ -483,9 +488,25 @@ source("scripts/functions_OSM.R")
 zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
 sp_data$dist_zcomer <- nearest_amenity(sp_data, zcomer_bog_points)
 
+#Zonas retail: "Commercial businesses which sell goods"  
+zretail_bog_points <- retrieve_amenities(bbox_bog, "landuse", "retail", "polygons")
+sp_data$dist_zretail <- nearest_amenity(sp_data, zretail_bog_points)
+
 #Zonas industriales
 zindus_bog_points <- retrieve_amenities(bbox_bog, "landuse", "industrial", "polygons")
 sp_data$dist_zindus <- nearest_amenity(sp_data, zindus_bog_points)
+
+#Zonas en construcción y desarrollo activo
+zcons_bog_points <- retrieve_amenities(bbox_bog, "landuse", "construction", "polygons")
+sp_data$dist_zcons <- nearest_amenity(sp_data, zcons_bog_points)
+
+#Zonas institucional (como de gobierno)
+zinstitu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "institutional", "polygons")
+sp_data$dist_zinstitutional <- nearest_amenity(sp_data, zinstitu_bog_points)
+
+#Zonas usadas predominantemente para propósitos educativos
+zedu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "education", "polygons")
+sp_data$dist_zeducation <- nearest_amenity(sp_data, zedu_bog_points)
 
 #Aeropuerto
 airport_bog_points <- retrieve_amenities(bbox_bog, "aeroway", "aerodrome", "polygons")
@@ -495,13 +516,26 @@ sp_data$dist_airport <- nearest_amenity(sp_data, airport_bog_points)
 uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
 sp_data$dist_uni <- nearest_amenity(sp_data, uni_bog_points)
 
-#
+#Hospitales ya está en variables.R 
+
+#Estaciones de policía ya está en variables.R 
+#Estaciones de bomberos en cambio
+fire_bog_points <- retrieve_amenities(bbox_bog, "amenity", "fire_station", "polygons")
+sp_data$dist_firest <- nearest_amenity(sp_data, fire_bog_points)
+
+sp_data <- sp_data %>%
+  rename(dist_zinstitutional = dist_zinstitu)
+
+#Supermercado
+supermarket_bog_points <- retrieve_amenities(bbox_bog, "shop", "supermarket", "polygons")
+sp_data$dist_supermercado <- nearest_amenity(sp_data, supermarket_bog_points)
+
 
 
 
 
 checkOSM <- opq(bbox = getbb("Bogotá Colombia")) %>%
-  add_osm_feature(key = "landuse", value = "commercial") %>%
+  add_osm_feature(key = "landuse", value = "construction") %>%
   osmdata_sf()
 
 
