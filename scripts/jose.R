@@ -140,8 +140,9 @@ df <- df %>%
 df_test <- df_test %>%
   mutate(description = str_trim(gsub("\\s+", " ", description)))
 
+########TRATAMIENTO Y LIMPIEZA DE DATOS
 
-#Verificación variable property_type
+####Verificación variable property_type
 
 #train
 
@@ -163,21 +164,12 @@ df_test <- df_test %>%
 
 #Ahora podemos convertir a Dummy la variable property_type_2
 
-#Tratamiento variable dicótoma property_type
-
-#train
-
-#df <- df %>%
-#mutate(property_typed = ifelse(df$property_type == "Casa", 1, 0))
-
 df <- df %>%
   mutate(property_type = case_when(property_type_2 == "apartamento" ~ 0,
                                    property_type_2 == "Apartamento" ~ 0,
                                    property_type_2 == "Casa" ~ 1,
                                    property_type_2 == "casa" ~ 1)
   )
-
-#test
 
 df_test <- df_test %>%
   mutate(property_type = case_when(property_type_2 == "apartamento" ~ 0,
@@ -186,22 +178,244 @@ df_test <- df_test %>%
                                    property_type_2 == "casa" ~ 1)
   )
 
-#Reemplazo NA's variable bathrooms
+####Reemplazo e Imputación NA's en variables de surface
+
+#Detectamos expresiones regulares que cumplan la condición establecida
+
+df <- df %>%
+  mutate(area = str_extract(description, "(\\d+|\\w+) mts|(\\d+|\\w+) m2|(\\d+|\\w+) metros|(\\d+|\\w+) metros cuadrados|(\\d+|\\w+) metros 2|(\\d+|\\w+) metros2"))
+
+df_test <- df_test %>%
+  mutate(area = str_extract(description, "(\\d+|\\w+) mts|(\\d+|\\w+) m2|(\\d+|\\w+) metros|(\\d+|\\w+) metros cuadrados|(\\d+|\\w+) metros 2|(\\d+|\\w+) metros2"))
+
+#Creamos vectores para cambiar de palabras a números
+
+area_escrita <- c("seis", "siete", "ocho", "nueve|nuebe", "diez|dies", "once|onse", "doce|dose", "trece|trese", "catorce|catorse", "quince|quinse", "dieciseis|diesiseis", "diecisiete|diesisiete", "dieciocho|diesiocho", "diecinueve|diesinueve", "veinte|beinte", "veintiun|beintiun|ventiun|bentiun", "veintidos|ventidos|bentidos|beintidos", "veintitres|ventitres|bentitres|beintitres", "veinticuatro|venticuatro|benticuatro|beinticuatro", "veinticinco|venticinco|beinticinco|benticinco", "veintiseis|ventiseis|beintiseis|bentiseis", "veintisiete|ventisiete|beintisiete|bentisiete", "veintiocho|ventiocho|beintiocho|bentiocho", "veintinueve|ventinueve|beintinueve|bentinueve", "treinta", "treinta y uno", "treinta y dos", "treinta y tres", "treinta y cuatro", "treinta y cinco", "treinta y seis", "treinta y siete", "treinta y ocho", "treinta y nueve", "cuarenta", "cuarenta y uno", "cuarenta y dos", "cuarenta y tres", "cuarenta y cuatro", "cuarenta y cinco", "cuarenta y seis", "cuarenta y siete", "cuarenta y ocho", "cuarenta y nueve", "cincuenta", "cincuenta y uno", "cincuenta y dos", "cincuenta y tres", "cincuenta y cuatro", "cincuenta y cinco", "cincuenta y seis", "cincuenta y siete", "cincuenta y ocho", "cincuenta y nueve", "sesenta", "sesenta y uno", "sesenta y dos", "sesenta y tres", "sesenta y cuatro", "sesenta y cinco", "sesenta y seis", "sesenta y siete", "sesenta y ocho", "sesenta y nueve", "setenta", "setenta y uno", "setenta y dos", "setenta y tres", "setenta y cuatro", "setenta y cinco", "setenta y seis", "setenta y siete", "setenta y ocho", "setenta y nueve", "ochenta", "ochenta y uno", "ochenta y dos", "ochenta y tres", "ochenta y cuatro", "ochenta y cinco", "ochenta y seis", "ochenta y siete", "ochenta y ocho", "ochenta y nueve", "noventa", "noventa y uno", "noventa y dos", "noventa y tres", "noventa y cuatro", "noventa y cinco", "noventa y seis", "noventa y siete", "noventa y ocho", "noventa y nueve", "cien")
+area_numerica <- as.character(6:100)
+
+#Reemplazamos palabras por números en los strings detectados
+
+df <- df %>%
+  mutate(area = str_replace_all(area, setNames(area_numerica, area_escrita)))
+
+df_test <- df_test %>%
+  mutate(area = str_replace_all(area, setNames(area_numerica, area_escrita)))
+
+#Extraemos el número del string anterior
+
+df <- df %>%
+  mutate(area = as.integer(str_extract(area, "\\d+")))
+
+df_test <- df_test %>%
+  mutate(area = as.integer(str_extract(area, "\\d+")))
+
+##Eliminación datos extraños o errados de área
+
+summary(df$surface_total) %>%
+  as.matrix() %>%
+  as.data.frame()
+
+#V1
+#Min.       16.0000
+#1st Qu.    84.0000
+#Median    119.0000
+#Mean      153.9502
+#3rd Qu.   185.0000
+#Max.    17137.0000
+#NA's    30790.0000
+
+#Hay una distancia enorme entre el máximo y el tercer quintil.
+
+summary(df$surface_covered) %>%
+  as.matrix() %>%
+  as.data.frame()
+
+#V1
+#Min.        2.0000
+#1st Qu.    81.0000
+#Median    108.0000
+#Mean      131.9324
+#3rd Qu.   160.0000
+#Max.     1336.0000
+#NA's    30079.0000
+
+#Hay una distancia enorme entre el máximo y el tercer quintil. Procederemos a eliminar (volver NA), el valor de las áreas más grandes del dataset.
+
+#Revisamos distribuciones
+
+distributionSurfaceTotal <- function (surface_totall) {
+  N = length(df$surface_total)
+  surface_totall <- na.omit(df$surface_total)
+  hist( df$surface_total,col = "light blue")
+}
+
+distributionSurfaceTotal()
+
+distributionSurfaceTotalTest <- function (surface_totall) {
+  N = length(df_test$surface_total)
+  surface_totall <- na.omit(df_test$surface_total)
+  hist( df_test$surface_total,col = "light blue")
+}
+
+distributionSurfaceTotalTest()
+
+#Vemos que hay uno o más valores que no permiten visualizar bien la distribución.Procederemos a eliminar (volver NA), el valor de las áreas más grandes del dataset. El intervalo establecido será 16 < surface_total < 1500
+
+distributionSurfaceCovered <- function (surface_coveredd) {
+  N = length(df$surface_covered)
+  surface_coveredd <- na.omit(df$surface_covered)
+  hist( df$surface_covered,col = "light blue")
+}
+
+distributionSurfaceCovered()
+
+distributionSurfaceCoveredTest <- function (surface_coveredd) {
+  N = length(df_test$surface_covered)
+  surface_coveredd <- na.omit(df_test$surface_covered)
+  hist( df_test$surface_covered,col = "light blue")
+}
+
+distributionSurfaceCoveredTest()
+
+#Hay una distancia enorme entre el máximo y el tercer quintil. Procederemos a eliminar (volver NA), el valor de las áreas más grandes del dataset. El intervalo será 16 < surface_covered < 1500. La distribución del dataset test parece mucho más normalizada, aunque sigue estando echada a la izquierda.
+
+#Asignamos valor NA a las observaciones dichas, de acuerdo a los intervalos establecidos previamente.
+
+df <- df %>%
+  mutate(area = ifelse(area > 1500| area < 16, NA, area))
+
+df_test <- df_test %>%
+  mutate(area = ifelse(area > 1500 | area < 16, NA, area))
+
+#Reemplazamos NA's en surface_total con los valores de la variable area
+
+df$surface_total <- ifelse(is.na(df$surface_total), df$area, df$surface_total)
+
+df_test$surface_total <- ifelse(is.na(df_test$surface_total), df_test$area, df_test$surface_total)
+
+#Reemplazamos NA's en surface_covered con los valores de la variable area
+
+df$surface_covered <- ifelse(is.na(df$surface_covered), df$area, df$surface_covered)
+
+df_test$surface_covered <- ifelse(is.na(df_test$surface_covered), df_test$area, df_test$surface_covered)
+
+#Como la superficie total no puede ser menor a la cubierta, si esto sucede, imputamos la superficie total por el valor de la cubierta
+
+df$surface_total <- ifelse(is.na(df$surface_total) | is.na(df$surface_covered) | df$surface_total < df$surface_covered, df$surface_covered, df$surface_total)
+
+df_test$surface_total <- ifelse(is.na(df_test$surface_total) | is.na(df_test$surface_covered) | df_test$surface_total < df_test$surface_covered, df_test$surface_covered, df_test$surface_total)
+
+#Debido a las distribuciones vistas previamente, vemos que la media no es representativa en ninguno de los dos datasets, para ninguna de las dos variables. Por ello, imputaremos la mediana a los valores faltantes de superficie, luego de todo el proceso anterior.
+
+mediana_sup_cubierta <- median(df$surface_covered, na.rm = TRUE) #108
+mediana_sup_total <- median(df$surface_total, na.rm = TRUE) #110
+
+mediana_sup_cubierta_test <- median(df_test$surface_covered, na.rm = TRUE) #118
+mediana_sup_total_test <- median(df_test$surface_total, na.rm = TRUE) #118
+
+df <- df %>%
+  mutate(surface_covered = replace_na(surface_covered, mediana_sup_cubierta),
+         surface_total = replace_na(surface_total, mediana_sup_total),)
+
+df_test <- df_test %>%
+  mutate(surface_covered = replace_na(surface_covered, mediana_sup_cubierta_test),
+         surface_total = replace_na(surface_total, mediana_sup_total_test),)
+
+
+###Con las variables de superficie imputadas, podemos calcular el valor por metro cuadrado, y así eliminar outliers o valores errados de la variable dependiente
+
+#Distribución variable dependiente
+
+distributionPrice <- function (pricee) {
+  N = length(df$price)
+  pricee <- na.omit(df$price)
+  hist( df$price,col = "light blue")
+}
+
+distributionPrice()
+
+#Posee una distribución asimétrica hacia la izquierda, por lo que conviene hacer una transformación logarítmica. Sin embargo, esto lo dejaremos para un paso posterior.
+
+#Revisamos posibles outliers
+
+summary(df$price) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  mutate(V1 = scales::dollar(V1))
+
+#V1
+#Min.      $300,000,000
+#1st Qu.   $415,000,000
+#Median    $559,990,000
+#Mean      $654,534,675
+#3rd Qu.   $810,000,000
+#Max.    $1,650,000,000
+
+#Como vemos que el valor máximo casi que dupica el tercer cuantil, revisamos que no sean errores o datos sin sentido, viendo la distribución del precio del metro cuadrado
+
+df <- df %>%
+  mutate(precio_por_mt2 = round(price / surface_total, 0))
+
+df_test <- df_test %>%
+  mutate(precio_por_mt2 = round(price / surface_total, 0))
+
+summary(df$precio_por_mt2) %>%
+  as.matrix() %>%
+  as.data.frame() %>%
+  mutate(V1 = scales::dollar(V1))
+
+#V1
+#Min.         $20,424
+#1st Qu.   $3,909,091
+#Median    $5,136,986
+#Mean      $5,878,355
+#3rd Qu.   $6,818,182
+#Max.    $187,500,000
+
+#Vemos que hay un valor mínimo de $20,424 y uno máximo de $40,450,000 por metro cuadrado, lo cual, a todas luces es muy bajo para el mínimo, y extraordinariamente alto para el máximo.
+
+#Estableceremos un rango con un mínimo de $600,000 y un máximo de $15,000,000 por metro cuadrado (según estimaciones, por barrio, el metro cuadrado más caro de Bogotá ronda alrededor de $7,145,435, y el más barato, alrededor de $873.138. Por ello dejaremos un poco de espacio para evitar sesgo, pero sí para eliminar valores irreales que puedan perjudicar las predicciones)
+
+df <- df %>%
+  filter(between(precio_por_mt2, 600000,  15e6))
+
+
+#Visualizamos la nueva distribución de la variable dependiente.
+
+p <- ggplot(df, aes(x = price)) +
+  geom_histogram(fill = "darkblue", alpha = 0.4) +
+  labs(x = "Valor de venta (log-scale)", y = "Cantidad") +
+  scale_x_log10(labels = scales::dollar) +
+  theme_bw()
+
+p
+
+#Está mucho más normalizada, y de las observaciones iniciales conservamos alrededor del 95%.
+
+####Reemplazo e Imputación NA's variable bathrooms
+
+#Detección
 
 df <- df %>%
   mutate(bathrooms_info = str_extract(description, "(\\w+|\\d+) baños|(\\w+|\\d+) baos|(\\w+|\\d+) banos|(\\w+|\\d+) lavabos"))
 
 df_test <- df_test %>%
   mutate(bathrooms_info = str_extract(description, "(\\w+|\\d+) baños|(\\w+|\\d+) baos|(\\w+|\\d+) banos|(\\w+|\\d+) lavabos"))
+
+#Vectores transformación números
 
 banos_escritos <- c("uno|un", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece")
 banos_numericos <- as.character(1:13)
 
+#Transformación valores numéricos
+
 df <- df %>%
   mutate(bathrooms_info = str_replace_all(bathrooms_info, setNames(banos_numericos, banos_escritos)))
 
 df_test <- df_test %>%
   mutate(bathrooms_info = str_replace_all(bathrooms_info, setNames(banos_numericos, banos_escritos)))
+
+#Extracción valores numéricos
 
 df <- df %>%
   mutate(bathrooms_info = as.integer(str_extract(bathrooms_info, "\\d+")))
@@ -209,17 +423,22 @@ df <- df %>%
 df_test <- df_test %>%
   mutate(bathrooms_info = as.integer(str_extract(bathrooms_info, "\\d+")))
 
-df <- df %>%
-  mutate(bathrooms_info = ifelse(bathrooms_info > 13, NA, bathrooms_info))
+##Eliminación outliers y datos leverage.
 
-df_test <- df_test %>%
-  mutate(bathrooms_info = ifelse(bathrooms_info > 13, NA, bathrooms_info))
+#Revisamos la distribución
 
-df$bathrooms <- ifelse(is.na(df$bathrooms), df$bathrooms_info, df$bathrooms)
+summary(df$bathrooms) %>%
+  as.matrix() %>%
+  as.data.frame()
 
-df_test$bathrooms <- ifelse(is.na(df_test$bathrooms), df_test$bathrooms_info, df_test$bathrooms)
-
-
+#V1
+#Min.       1.00000
+#1st Qu.    2.00000
+#Median     3.00000
+#Mean       2.88087
+#3rd Qu.    3.00000
+#Max.      13.00000
+#NA's    9826.00000
 
 distributionBathrooms <- function (bathrooms) {
   N = length(df$bathrooms)
@@ -241,9 +460,19 @@ distributionBathroomsTest()
 
 #Vemos que hay una distribución asimétrica y echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
 
+#Reemplazamos datos faltantes con datos encontrados en la descripción
+
+df$bathrooms <- ifelse(is.na(df$bathrooms), df$bathrooms_info, df$bathrooms)
+
+df_test$bathrooms <- ifelse(is.na(df_test$bathrooms), df_test$bathrooms_info, df_test$bathrooms)
+
+#Calculamos las modas
+
 df %>%count(bathrooms) %>% head() #Moda es 2
 
 df_test %>%count(bathrooms) %>% head() #Moda es 2
+
+#Imputamos datos faltantes persistentes con moda
 
 df <- df %>%
   mutate(bathrooms = replace_na(bathrooms, 2))
@@ -251,7 +480,7 @@ df <- df %>%
 df_test <- df_test %>%
   mutate(bathrooms = replace_na(bathrooms, 2))
 
-#Variable Piso para apartamentos
+#### Creación de variable Piso para apartamentos
 
 df <- df %>%
   mutate(piso_info = str_extract(description, "(\\w+|\\d+) piso (\\w+|\\d+)"))
@@ -302,172 +531,11 @@ df <- df %>%
 df_test <- df_test %>%
   mutate(piso_numerico = replace_na(piso_numerico, 2))
 
-#Reemplazo de NA's en variables de surface
+####La única variable que queda por imputar es Rooms. Es muy ambigua, cuenta con muchos NA's. Veamos su distribución:
 
-df <- df %>%
-  mutate(area = str_extract(description, "(\\d+|\\w+) mts|(\\d+|\\w+) m2|(\\d+|\\w+) metros|(\\d+|\\w+) metros cuadrados|(\\d+|\\w+) metros 2|(\\d+|\\w+) metros2"))
-
-df_test <- df_test %>%
-  mutate(area = str_extract(description, "(\\d+|\\w+) mts|(\\d+|\\w+) m2|(\\d+|\\w+) metros|(\\d+|\\w+) metros cuadrados|(\\d+|\\w+) metros 2|(\\d+|\\w+) metros2"))
-
-area_escrita <- c("seis", "siete", "ocho", "nueve|nuebe", "diez|dies", "once|onse", "doce|dose", "trece|trese", "catorce|catorse", "quince|quinse", "dieciseis|diesiseis", "diecisiete|diesisiete", "dieciocho|diesiocho", "diecinueve|diesinueve", "veinte|beinte", "veintiun|beintiun|ventiun|bentiun", "veintidos|ventidos|bentidos|beintidos", "veintitres|ventitres|bentitres|beintitres", "veinticuatro|venticuatro|benticuatro|beinticuatro", "veinticinco|venticinco|beinticinco|benticinco", "veintiseis|ventiseis|beintiseis|bentiseis", "veintisiete|ventisiete|beintisiete|bentisiete", "veintiocho|ventiocho|beintiocho|bentiocho", "veintinueve|ventinueve|beintinueve|bentinueve", "treinta", "treinta y uno", "treinta y dos", "treinta y tres", "treinta y cuatro", "treinta y cinco", "treinta y seis", "treinta y siete", "treinta y ocho", "treinta y nueve", "cuarenta", "cuarenta y uno", "cuarenta y dos", "cuarenta y tres", "cuarenta y cuatro", "cuarenta y cinco", "cuarenta y seis", "cuarenta y siete", "cuarenta y ocho", "cuarenta y nueve", "cincuenta", "cincuenta y uno", "cincuenta y dos", "cincuenta y tres", "cincuenta y cuatro", "cincuenta y cinco", "cincuenta y seis", "cincuenta y siete", "cincuenta y ocho", "cincuenta y nueve", "sesenta", "sesenta y uno", "sesenta y dos", "sesenta y tres", "sesenta y cuatro", "sesenta y cinco", "sesenta y seis", "sesenta y siete", "sesenta y ocho", "sesenta y nueve", "setenta", "setenta y uno", "setenta y dos", "setenta y tres", "setenta y cuatro", "setenta y cinco", "setenta y seis", "setenta y siete", "setenta y ocho", "setenta y nueve", "ochenta", "ochenta y uno", "ochenta y dos", "ochenta y tres", "ochenta y cuatro", "ochenta y cinco", "ochenta y seis", "ochenta y siete", "ochenta y ocho", "ochenta y nueve", "noventa", "noventa y uno", "noventa y dos", "noventa y tres", "noventa y cuatro", "noventa y cinco", "noventa y seis", "noventa y siete", "noventa y ocho", "noventa y nueve", "cien")
-area_numerica <- as.character(6:100)
-
-df <- df %>%
-  mutate(area = str_replace_all(area, setNames(area_numerica, area_escrita)))
-
-df_test <- df_test %>%
-  mutate(area = str_replace_all(area, setNames(area_numerica, area_escrita)))
-
-df <- df %>%
-  mutate(area = as.integer(str_extract(area, "\\d+")))
-
-df_test <- df_test %>%
-  mutate(area = as.integer(str_extract(area, "\\d+")))
-
-#Eliminamos datos extraños de área
-
-df <- df %>%
-  mutate(area = ifelse(area > 1000| area < 25, NA, area))
-
-df_test <- df_test %>%
-  mutate(area = ifelse(area > 1000 | area < 25, NA, area))
-
-#Reemplazamos NA's en surface_total con los valores de la variable area
-
-df$surface_total <- ifelse(is.na(df$surface_total), df$area, df$surface_total)
-
-df_test$surface_total <- ifelse(is.na(df_test$surface_total), df_test$area, df_test$surface_total)
-
-#Reemplazamos NA's en surface_covered con los valores de la variable area
-
-df$surface_covered <- ifelse(is.na(df$surface_covered), df$area, df$surface_covered)
-
-df_test$surface_covered <- ifelse(is.na(df_test$surface_covered), df_test$area, df_test$surface_covered)
-
-#La superficie total no puede ser menor a la cubierta, por lo que, si esto sucede, imputamos la superficie total por el valor de la cubierta
-
-df$surface_total <- ifelse(is.na(df$surface_total) | is.na(df$surface_covered) | df$surface_total < df$surface_covered, df$surface_covered, df$surface_total)
-
-df_test$surface_total <- ifelse(is.na(df_test$surface_total) | is.na(df_test$surface_covered) | df_test$surface_total < df_test$surface_covered, df_test$surface_covered, df_test$surface_total)
-
-#Revisamos distribucones
-
-distributionSurfaceTotal <- function (surface_totall) {
-  N = length(df$surface_total)
-  surface_totall <- na.omit(df$surface_total)
-  hist( df$surface_total,col = "light blue")
-}
-
-distributionSurfaceTotal()
-
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
-
-distributionSurfaceCovered <- function (surface_coveredd) {
-  N = length(df$surface_covered)
-  surface_coveredd <- na.omit(df$surface_covered)
-  hist( df$surface_covered,col = "light blue")
-}
-
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
-
-distributionSurfaceCovered()
-
-distributionSurfaceTotalTest <- function (surface_totall) {
-  N = length(df_test$surface_total)
-  surface_totall <- na.omit(df_test$surface_total)
-  hist( df_test$surface_total,col = "light blue")
-}
-
-distributionSurfaceTotalTest()
-
-#Vemos que hay una distribución asimétrica, echada a la izquierda, con un valor atípico. Para evitar leverage, imputaremos con mediana.
-
-distributionSurfaceCoveredTest <- function (surface_coveredd) {
-  N = length(df_test$surface_covered)
-  surface_coveredd <- na.omit(df_test$surface_covered)
-  hist( df_test$surface_covered,col = "light blue")
-}
-
-distributionSurfaceCoveredTest()
-
-#Vemos que hay una distribución asimétrica, echada a la izquierda. Imputaremos con mediana.
-
-
-#Imputamos mediana para valores faltantes de superficie
-
-mediana_sup_cubierta <- median(df$surface_covered, na.rm = TRUE) #108
-mediana_sup_total <- median(df$surface_total, na.rm = TRUE) #110
-
-mediana_sup_cubierta_test <- median(df_test$surface_covered, na.rm = TRUE) #118
-mediana_sup_total_test <- median(df_test$surface_total, na.rm = TRUE) #118
-
-df <- df %>%
-  mutate(surface_covered = replace_na(surface_covered, mediana_sup_cubierta),
-         surface_total = replace_na(surface_total, mediana_sup_total),)
-
-df_test <- df_test %>%
-  mutate(surface_covered = replace_na(surface_covered, mediana_sup_cubierta_test),
-         surface_total = replace_na(surface_total, mediana_sup_total_test),)
-
-
-#Con las variables de superficie imputadas, podemos calcular el valor por metro cuadrado, y así eliminar outliers o valores errados de la variable dependiente
-
-##Distribución variable dependiente
-
-distributionPrice <- function (pricee) {
-  N = length(df$price)
-  pricee <- na.omit(df$price)
-  hist( df$price,col = "light blue")
-}
-
-distributionPrice()
-
-#Posee una distribución asimétrica hacia la izquierda, por lo que haremos una transformación logarítmica
-#Revisamos posibles outliers
-
-summary(df$price) %>%
+summary(df$rooms) %>%
   as.matrix() %>%
-  as.data.frame() %>%
-  mutate(V1 = scales::dollar(V1))
-
-#V1
-#Min.      $300,000,000
-#1st Qu.   $415,000,000
-#Median    $559,990,000
-#Mean      $654,534,675
-#3rd Qu.   $810,000,000
-#Max.    $1,650,000,000
-
-#Como vemos que el valor máximo casi que dupica el tercer cuantil, revisamos que no sean errores o datos sin sentido, viendo la distribución del precio del metro cuadrado
-
-df <- df %>%
-  mutate(precio_por_mt2 = round(price / surface_total, 0))
-
-summary(df$precio_por_mt2) %>%
-  as.matrix() %>%
-  as.data.frame() %>%
-  mutate(V1 = scales::dollar(V1))
-
-#Vemos que hay un valor mínimo de $20,424 y uno máximo de $40,450,000 por metro cuadrado, lo cual, a todas luces es extraordinariamente alto.
-#Estableceremos un rango mínimo de $600,000 máximo de $15,000,000 por metro cuadrado (según estimaciones, por barrio, el metro cuadrado más caro de Bogotá ronda alrededor de $7,145,435, y el más barato, alrededor de $873.138. Por ello dejaremos un poco de espacio para evitar sesgo, pero sí para eliminar valores irreales que puedan perjudicar las predicciones)
-
-df <- df %>%
-  filter(between(precio_por_mt2, 600000,  15e6))
-
-
-#Visualizamos la nueva distribución de la variable dependiente.
-
-p <- ggplot(df, aes(x = price)) +
-  geom_histogram(fill = "darkblue", alpha = 0.4) +
-  labs(x = "Valor de venta (log-scale)", y = "Cantidad") +
-  scale_x_log10(labels = scales::dollar) +
-  theme_bw()
-
-p
-
-#La única variable que queda por imputar es Rooms. Es muy ambigua, cuenta con muchos NA's. Veamos su distribución:
-
+  as.data.frame()
 
 distributionRooms <- function (rooms) {
   N = length(df$rooms)
@@ -477,7 +545,7 @@ distributionRooms <- function (rooms) {
 
 distributionRooms()
 
-#Vemos que hay una distribución asimétrica, y aunque más normalizada, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
+#Vemos que hay una distribución asimétrica, y aunque más normalizada, con un mínimo de 1 y un máximo de 11, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
 
 distributionRoomsTest <- function (rooms) {
   N = length(df_test$rooms)
@@ -487,20 +555,26 @@ distributionRoomsTest <- function (rooms) {
 
 distributionRoomsTest()
 
-#Vemos que hay una distribución asimétrica, y aunque más normalizada, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros.
+#Vemos que hay una distribución asimétrica, y aunque más normalizada, sigue estando echada a la izquierda. Imputaremos con moda, al tomar valores enteros. No eliminaremos esta variable pues esto implica quedarnos con casi la mitad de nuestra muestra.
+
+#Calculamos modas
 
 df %>%count(rooms) %>% head() #La moda es 3
 df_test %>%count(rooms) %>% head() #La moda es 3
 
-#train
+#Imputamos
 
 df <- df %>%
   mutate(rooms = replace_na(rooms, 3))
 
-#test
-
 df_test <- df_test %>%
   mutate(rooms = replace_na(rooms, 3))
+
+#Guardamos bases de datos finales
+
+write_csv(df, "base_datos_limpia_train.csv")
+
+write_csv(df_test, "base_datos_limpia_test.csv")
 
 ##Receta 1, OLS
 
