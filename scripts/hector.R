@@ -527,7 +527,32 @@ sp_data$dist_firest <- nearest_amenity(sp_data, fire_bog_points)
 supermarket_bog_points <- retrieve_amenities(bbox_bog, "shop", "supermarket", "polygons")
 sp_data$dist_supermercado <- nearest_amenity(sp_data, supermarket_bog_points)
 
+#Áreas variables relevantes 
 
+features_areas <- function(x, bbox, key, value) {
+  
+  checkOSM <- opq(bbox) %>%
+    add_osm_feature(key = key, value = value) %>%
+    osmdata_sf()
+  
+  geometria <- checkOSM$osm_polygons %>%
+    select(osm_id, name)
+  
+  geometria$area <- st_area(geometria)
+  
+  geometria <- geometria %>% 
+    st_centroid() 
+  
+  indices_nearest <- st_nearest_feature(x, geometria)
+  area <- geometria$area[indices_nearest]
+  
+  area
+  
+} 
+
+#Para zonas 
+sp_data$area_zindustrial <- features_areas(sp_data, bbox_bog, "landuse", "industrial")
+sp_data$area_supermercado <- features_areas(sp_data, bbox_bog, "shop", "supermarket")
 
 
 
