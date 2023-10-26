@@ -117,7 +117,7 @@ dist_matrixCC <- st_distance(x = db_sf, y = centroidesCC_sf)
 
 dist_minCC <- apply(dist_matrixCC, 1, min)
 
-db <- db %>% mutate(distancia_minCC = dist_minCC)
+db_sf <- db_sf %>% mutate(distancia_minCC = dist_minCC)
 
 # Revisión de la áreas de los CC, hay muchos pequeños
 
@@ -132,7 +132,7 @@ CC_geometria_grandes <- CC_geometria %>%
   filter(CC_geometria$area > 3000)
 
 posicion <- apply(dist_matrixCC, 1, function(x) which(min(x) == x))
-db <- db %>%
+db_sf <- db_sf %>%
   mutate(area_CC = as.numeric(CC_geometria$areas[posicion]))
 
 # Nuevo gráfico con los CC grandes
@@ -149,7 +149,7 @@ dist_matrixCCgrandes <- st_distance(x = db_sf, y = centroidesCCnuevos_sf)
 
 dist_minCCgrandes <- apply(dist_matrixCCgrandes, 1, min)
 
-db <- db %>% mutate(distancia_minCCgrandes = dist_minCCgrandes)
+db_sf <- db_sf %>% mutate(distancia_minCCgrandes = dist_minCCgrandes)
 
 # Distancia vías principales ---------------------------------------------------
 
@@ -167,7 +167,7 @@ Vias_sf <- st_as_sf(Vias_geometria) %>%
 
 dist_vias <- st_distance(x = db_sf, y = Vias_sf)
 
-db <- db %>%
+db_sf <- db_sf %>%
   mutate(Min_dist_vias = apply(dist_vias, 1, min))
 
 # Vías principales
@@ -184,13 +184,13 @@ Principales_sf <- st_as_sf(Principales_geometria) %>%
 
 dist_Principales <- st_distance(x = db_sf, y = Principales_sf)
 
-db <- db %>%
+db_sf <- db_sf %>%
   mutate(Min_dist_principales = apply(dist_Principales, 1, min))
 
 # Gráficos ----------------------------------------------------------------------
 
-latitud_central <- mean(db$lat)
-longitud_central <- mean(db$lon)
+latitud_central <- mean(db_sf$lat)
+longitud_central <- mean(db_sf$lon)
 
 # Gráfico centros comerciales (grandes)
 
@@ -254,7 +254,7 @@ media_baños_aptos <- mean(db$bathrooms[db$property_type == "Apartamento"], na.r
 
 # Imputar datos faltantes
 
-db_NAs <- db %>%
+db_NAs <- db_sf %>%
   mutate(bathrooms = ifelse(property_type == "Casa" & is.na(bathrooms), 3, bathrooms),
          bathrooms = ifelse(property_type == "Apartamento" & is.na(bathrooms), 2, bathrooms))
 
@@ -461,6 +461,10 @@ for (i in 1:3) {
 
 ### Más variables OSM ----------------------------------------------------------------
 
+#Para que funcione la base con la de los demás 
+
+sp_data <- db_sf 
+
 setwd("/Users/hectorsegura/Documentos/GitHub/bdml_problem_set_2/")
 
 #Primero el mapa de Bogotá y ubicar las UPL
@@ -468,7 +472,7 @@ upl_bog <- st_read("stores/unidadplaneamientolocal.gpkg") %>%
   st_transform(crs=4326) %>%
   select(c(NOMBRE, SECTOR, SHAPE)) 
 
-db_sf <- db_sf %>%
+sp_data <- sp_data %>%
   st_join(upl_bog, left = T, join=st_intersects) 
 
 bbox_bog <- st_bbox(upl_bog)
@@ -477,19 +481,19 @@ source("scripts/functions_OSM.R")
 
 #Zonas comerciales 
 zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
-db$dist_zcomer <- nearest_amenity(db_sf, zcomer_bog_points)
+sp_data$dist_zcomer <- nearest_amenity(sp_data, zcomer_bog_points)
 
 #Zonas industriales
 zindus_bog_points <- retrieve_amenities(bbox_bog, "landuse", "industrial", "polygons")
-db$dist_zindus <- nearest_amenity(db_sf, zindus_bog_points)
+sp_data$dist_zindus <- nearest_amenity(sp_data, zindus_bog_points)
 
 #Aeropuerto
 airport_bog_points <- retrieve_amenities(bbox_bog, "aeroway", "aerodrome", "polygons")
-db$dist_airport <- nearest_amenity(db_sf, airport_bog_points)
+sp_data$dist_airport <- nearest_amenity(sp_data, airport_bog_points)
 
 #Universidades 
 uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
-db$dist_uni <- nearest_amenity(db_sf, uni_bog_points)
+sp_data$dist_uni <- nearest_amenity(sp_data, uni_bog_points)
 
 #
 
