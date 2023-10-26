@@ -5,9 +5,10 @@
 
 #-------------------------------------------
 # Load packages
-pkg <- list("dplyr", "tidyverse", "sf", "leaflet", "Rcpp", "rio", "plotly", "tmaptools", "osmdata", "tidymodels", "ggmap")
-lapply(pkg, require, character.only = T)
-rm(pkg)
+
+require(pacman)
+p_load("dplyr", "tidyverse", "sf", "leaflet", "Rcpp", "rio", "plotly", "tmaptools", "osmdata",
+       "tidymodels", "ggmap", "tm", "udpipe", "stringi", "gdata")
 
 # Clean environment
 rm(list = ls())
@@ -82,9 +83,9 @@ sp_data <- st_as_sf(data, coords = c("lon", "lat"), crs = 4326)
 upl_bog <- st_read("stores/unidadplaneamientolocal.gpkg") %>%
   st_transform(crs=4326) %>%
   select(c(NOMBRE, SECTOR, SHAPE)) 
-
+  
 sp_data <- sp_data %>%
-  st_join(upl_bog, left = T, join=st_intersects)
+  st_join(upl_bog, left = T, join=st_intersects) 
 
 bbox_bog <- st_bbox(upl_bog)
 
@@ -135,29 +136,66 @@ mall_bog_points <- retrieve_amenities(bbox_bog, "shop", "mall")
 sp_data$dist_mall <- nearest_amenity(sp_data, mall_bog_points)
 
 
+# Análisis de textos ------------------------------------------------------
+
+model_udpipe <- udpipe_load_model("spanish-gsd-ud-2.5-191206.udpipe")
+
+#Vectorizacion de las descripciones de los hogares usando BOW
+
+lemmatizer <- function(x, model) {
+  
+  stemmed_descriptions <- udpipe_annotate(model, x, tagger = "default", parser = "none")
+  tibble <- as_tibble(stemmed_descriptions)
+
+  paste(tibble$lemma, collapse = " ")
+  
+}
 
 
+clean_descriptions <- function(v){
+  
+  useless_words <- c("cod", "codfr", "m2", "mt2", "metros", "cuadrados", "area", "fr", "mts", "x", "br", "fr", "aacute", "eacute",
+                     "iacute", "oacute", "uacute", "tilde", "b", "patricia", "tania", "uberney", "luzma")
+  
+  descriptions <- VCorpus(VectorSource(v), readerControl = list(language = "spanish"))
+  descriptions <- tm_map(descriptions, content_transformer(tolower))
+  descriptions <- tm_map(descriptions, removeWords, stopwords("spanish"))
+  descriptions <- tm_map(descriptions, removeNumbers)
+  descriptions <- tm_map(descriptions, removeWords, useless_words)
+  descriptions <- tm_map(descriptions, stripWhitespace)
+  descriptions <- data.frame(description=unlist(sapply(descriptions, `[`, "content")), 
+                                          stringsAsFactors=F)
+  
+  stemmed_descriptions <- c()
+  
+  for (d in descriptions$description) {
+    stemmed <- lemmatizer(d, model_udpipe)
+    stemmed_descriptions <- c(stemmed_descriptions, stemmed)
+  }
+  #Somme lemmas have accents
+  stemmed_descriptions <- stri_trans_general(stemmed_descriptions, id = "Latin-ASCII")
+  
+  #Return stemmed descriptions in a vector
+  stemmed_descriptions
+  
+}
 
+# Las descripciones limpias son utilizadas como variables. 
+train_descriptions <- clean_descriptions(train_data$description)
 
+# Matriz de palabras train
+train_descriptions_corpus <- VCorpus(VectorSource(train_descriptions), readerControl = list(language = "spanish"))
+dtm_train<-DocumentTermMatrix(train_descriptions_corpus)
+rm_sparse_dtm_train <- removeSparseTerms(dtm_train, 0.99)
 
+dense_dtm_train <- as.matrix(rm_sparse_dtm_train)
+words_train <- colnames(dense_dtm_train)
 
+#Repetir el ejercicio con test, pero solo incluimos las palabras de train
+test_descriptions <- clean_descriptions(test_data$description)
+test_descriptions_corpus <- VCorpus(VectorSource(test_descriptions), readerControl = list(language = "spanish"))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+dense_dtm_test<-as.matrix(DocumentTermMatrix(test_descriptions_corpus, list(dictionary=words_train)))
 
 
 
