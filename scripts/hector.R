@@ -565,6 +565,12 @@ checkOSM <- opq(bbox = getbb("Bogotá Colombia")) %>%
   add_osm_feature(key = "landuse", value = "construction") %>%
   osmdata_sf()
 
+write_csv(sp_data, file = "sp_dataHector.csv")
+
+
+
+
+
 
 
 
