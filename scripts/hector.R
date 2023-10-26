@@ -535,8 +535,8 @@ features_areas <- function(x, bbox, key, value) {
     add_osm_feature(key = key, value = value) %>%
     osmdata_sf()
   
-  geometria <- checkOSM$osm_polygons %>%
-    select(osm_id, name)
+  geometria <- checkOSM$osm_polygons %>% #Sólo considera polígonos
+    select(osm_id, name) 
   
   geometria$area <- st_area(geometria)
   
@@ -552,9 +552,14 @@ features_areas <- function(x, bbox, key, value) {
 
 #Para zonas 
 sp_data$area_zindustrial <- features_areas(sp_data, bbox_bog, "landuse", "industrial")
+sp_data$area_zcommercial <- features_areas(sp_data, bbox_bog, "landuse", "commercial")
+sp_data$area_zretail <- features_areas(sp_data, bbox_bog, "landuse", "reatail")
+sp_data$area_zconstruction <- features_areas(sp_data, bbox_bog, "landuse", "construction")
+sp_data$area_zinstitutional <- features_areas(sp_data, bbox_bog, "landuse", "institutional")
+sp_data$area_zeducation <- features_areas(sp_data, bbox_bog, "landuse", "education")
+
+#Áreas supermercados
 sp_data$area_supermercado <- features_areas(sp_data, bbox_bog, "shop", "supermarket")
-
-
 
 checkOSM <- opq(bbox = getbb("Bogotá Colombia")) %>%
   add_osm_feature(key = "landuse", value = "construction") %>%
