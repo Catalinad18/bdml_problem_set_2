@@ -52,3 +52,29 @@ nearest_amenity <- function(x,y) {
   #Return dataset with distances
   res
 }
+
+# Function 3: Find number of amenities in radius ---------------------------------------------------------------
+amenities_radius <- function(point, y, radius = 100, crs = 3116) {
+  ###
+  #Find how many obs of y are in a radius of point. In this case, point should be a single geometry.
+  #y should be the dataset of objects from OSM. 
+  ###
+  
+  #Reproject for radius in meters (3116 is optimal for Bogota)
+  point <- point %>%
+    st_transform(crs)
+  y <- y %>%
+    st_transform(crs)  
+  
+  #Radius
+  buffer <- st_buffer(point, radius)
+  
+  #Find objects in y within buffer
+  intersection <- y %>%
+    st_intersection(buffer)
+  
+  res <- dim(intersection)[1]
+  
+  #Return n
+  res
+}
