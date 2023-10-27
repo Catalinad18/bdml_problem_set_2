@@ -135,6 +135,41 @@ sp_data$dist_supermercado <- nearest_amenity(sp_data, supermarket_bog_points)
 mall_bog_points <- retrieve_amenities(bbox_bog, "shop", "mall")
 sp_data$dist_mall <- nearest_amenity(sp_data, mall_bog_points)
 
+#Zonas comerciales 
+zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
+sp_data$dist_zcommercial <- nearest_amenity(sp_data, zcomer_bog_points)
+
+#Zonas retail: "Commercial businesses which sell goods"  
+zretail_bog_points <- retrieve_amenities(bbox_bog, "landuse", "retail", "polygons")
+sp_data$dist_zretail <- nearest_amenity(sp_data, zretail_bog_points)
+
+#Zonas industriales
+zindus_bog_points <- retrieve_amenities(bbox_bog, "landuse", "industrial", "polygons")
+sp_data$dist_zindustrial <- nearest_amenity(sp_data, zindus_bog_points)
+
+#Zonas en construcción y desarrollo activo
+zcons_bog_points <- retrieve_amenities(bbox_bog, "landuse", "construction", "polygons")
+sp_data$dist_zconstruction <- nearest_amenity(sp_data, zcons_bog_points)
+
+#Zonas institucional (como de gobierno)
+zinstitu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "institutional", "polygons")
+sp_data$dist_zinstitutional <- nearest_amenity(sp_data, zinstitu_bog_points)
+
+#Zonas usadas predominantemente para propósitos educativos
+zedu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "education", "polygons")
+sp_data$dist_zeducation <- nearest_amenity(sp_data, zedu_bog_points)
+
+#Aeropuerto
+airport_bog_points <- retrieve_amenities(bbox_bog, "aeroway", "aerodrome", "polygons")
+sp_data$dist_airport <- nearest_amenity(sp_data, airport_bog_points)
+
+#Universidades 
+uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
+sp_data$dist_university <- nearest_amenity(sp_data, uni_bog_points)
+
+#Estaciones de bomberos
+fire_bog_points <- retrieve_amenities(bbox_bog, "amenity", "fire_station", "polygons")
+sp_data$dist_firest <- nearest_amenity(sp_data, fire_bog_points)
 
 # Análisis de textos ------------------------------------------------------
 
