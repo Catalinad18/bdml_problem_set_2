@@ -1,6 +1,7 @@
 ##############################################################
 #       Big Data y Machine Learning                          #
 #       Taller 2                                             #
+#       Variables                                            #
 ##############################################################
 
 #-------------------------------------------
@@ -135,6 +136,11 @@ sp_data$dist_supermercado <- nearest_amenity(sp_data, supermarket_bog_points)
 mall_bog_points <- retrieve_amenities(bbox_bog, "shop", "mall")
 sp_data$dist_mall <- nearest_amenity(sp_data, mall_bog_points)
 
+#Bibliotecas
+library_bog_points <- retrieve_amenities(bbox_bog, "amenity", "library")
+sp_data$dist_library <- nearest_amenity(sp_data, library_bog_points)
+
+
 #Zonas comerciales 
 zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
 sp_data$dist_zcommercial <- nearest_amenity(sp_data, zcomer_bog_points)
@@ -170,6 +176,43 @@ sp_data$dist_university <- nearest_amenity(sp_data, uni_bog_points)
 #Estaciones de bomberos
 fire_bog_points <- retrieve_amenities(bbox_bog, "amenity", "fire_station", "polygons")
 sp_data$dist_firest <- nearest_amenity(sp_data, fire_bog_points)
+
+#### Intersección con datos en shp
+
+#Zonas de interés turístico
+interes_turistico <- st_read("stores/ZITu.shp")%>%
+  st_transform(crs = 4326)
+
+sp_data$turistico <- lengths(st_intersects(sp_data, interes_turistico))
+
+#Troncales de transmilenio
+transmilenio <- st_read("stores/transmilenio.shp")%>%
+  st_transform(crs = 4326)
+
+sp_data$dist_transmilenio <- nearest_amenity(sp_data, transmilenio)
+
+#Estrato
+estrato <- st_read("stores/ManzanaEstratificacion.shp")%>%
+  st_transform(crs = 4326) %>% select("ESTRATO", "geometry")
+
+sp_data <- st_join(sp_data, estrato)
+colnames(sp_data)[35] <- "estrato"
+
+#Suciedad calles
+suciedad <- st_read("stores/PCAC.shp")%>%
+  st_transform(crs = 4326)
+
+sp_data$dist_suciedad <- nearest_amenity(sp_data, suciedad)
+
+#Alumbrado público
+alumbrado <- st_read("stores/Luminarias_UPZ.shp")%>%
+  st_transform(crs = 4326)
+
+sp_data$alumbrado <- nearest_amenity(sp_data, alumbrado)
+
+#Centro de Bogotá
+centro <- geocode_OSM("Centro Internacional, Bogota", as.sf = TRUE)
+sp_data$dist_centro <- nearest_amenity(sp_data, centro)
 
 # Análisis de textos ------------------------------------------------------
 
