@@ -376,9 +376,12 @@ summary(df$precio_por_mt2) %>%
 
 #Estableceremos un rango con un mínimo de $600,000 y un máximo de $15,000,000 por metro cuadrado (según estimaciones, por barrio, el metro cuadrado más caro de Bogotá ronda alrededor de $7,145,435, y el más barato, alrededor de $873.138. Por ello dejaremos un poco de espacio para evitar sesgo, pero sí para eliminar valores irreales que puedan perjudicar las predicciones)
 
+####################################################################
+
 df <- df %>%
   filter(between(precio_por_mt2, 600000,  15e6))
 
+#####################################################################
 
 #Visualizamos la nueva distribución de la variable dependiente.
 
