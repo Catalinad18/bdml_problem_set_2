@@ -103,6 +103,41 @@ sp_data$dist_supermercado <- nearest_amenity(sp_data, supermarket_bog_points)
 mall_bog_points <- retrieve_amenities(bbox_bog, "shop", "mall")
 sp_data$dist_mall <- nearest_amenity(sp_data, mall_bog_points)
 
+#Bibliotecas
+library_bog_points <- retrieve_amenities(bbox_bog, "amenity", "library")
+sp_data$dist_library <- nearest_amenity(sp_data, library_bog_points)
+
+#Zonas comerciales 
+zcomer_bog_points <- retrieve_amenities(bbox_bog, "landuse", "commercial", "polygons")
+sp_data$dist_zcommercial <- nearest_amenity(sp_data, zcomer_bog_points)
+
+#Zonas retail: "Commercial businesses which sell goods"  
+zretail_bog_points <- retrieve_amenities(bbox_bog, "landuse", "retail", "polygons")
+sp_data$dist_zretail <- nearest_amenity(sp_data, zretail_bog_points)
+
+#Zonas industriales
+zindus_bog_points <- retrieve_amenities(bbox_bog, "landuse", "industrial", "polygons")
+sp_data$dist_zindustrial <- nearest_amenity(sp_data, zindus_bog_points)
+
+#Zonas en construcción y desarrollo activo
+zcons_bog_points <- retrieve_amenities(bbox_bog, "landuse", "construction", "polygons")
+sp_data$dist_zconstruction <- nearest_amenity(sp_data, zcons_bog_points)
+
+#Zonas institucional (como de gobierno)
+zinstitu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "institutional", "polygons")
+sp_data$dist_zinstitutional <- nearest_amenity(sp_data, zinstitu_bog_points)
+
+#Zonas usadas predominantemente para propósitos educativos
+zedu_bog_points <- retrieve_amenities(bbox_bog, "landuse", "education", "polygons")
+sp_data$dist_zeducation <- nearest_amenity(sp_data, zedu_bog_points)
+
+#Universidades 
+uni_bog_points <- retrieve_amenities(bbox_bog, "amenity", "university", "polygons")
+sp_data$dist_university <- nearest_amenity(sp_data, uni_bog_points)
+
+#Estaciones de bomberos
+fire_bog_points <- retrieve_amenities(bbox_bog, "amenity", "fire_station", "polygons")
+sp_data$dist_firest <- nearest_amenity(sp_data, fire_bog_points)
 
 # Otras distancias --------------------------------------------------------
 
@@ -117,23 +152,6 @@ dist_centros <- st_distance(sp_data, centros_bog) %>%
 colnames(dist_centros) <- tolower(paste("dist", centros_bog$Name))
 
 sp_data<- cbind(sp_data, dist_centros)
-
-
-# Número de amenities en un radio -----------------------------------------
-
-rows_sp_data <- split(sp_data[, c("property_id","geometry")], 1:nrow(sp_data))
-
-#Restaurantes
-n_res <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,restaurant_bog_points, radius = 350)}))
-sp_data$n_restaurants <- unlist(n_res)
-
-#Parques
-n_parks <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,parques_bog_points, radius = 350)}))
-sp_data$n_parques <- unlist(n_parks)
-
-#Supermercado
-n_super <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,supermarket_bog_points, radius = 350)}))
-sp_data$n_supermercados <- unlist(n_super)
 
 
 # Intersección con datos en shp -------------------------------------------
@@ -152,10 +170,12 @@ sp_data$dist_transmilenio <- nearest_amenity(sp_data, transmilenio)
 
 #Estrato
 estrato <- st_read("stores/ManzanaEstratificacion.shp")%>%
-  st_transform(crs = 4326) %>% select("ESTRATO", "geometry")
+  st_transform(crs = 3116) %>% select("ESTRATO", "geometry")
 
-sp_data <- st_join(sp_data, estrato)
-colnames(sp_data)[35] <- "estrato"
+sp_data <- sp_data %>%
+  st_transform(3116) %>%
+  st_join(estrato, join = st_nearest_feature) %>%
+  st_transform(4326)
 
 #Suciedad calles
 suciedad <- st_read("stores/PCAC.shp")%>%
@@ -165,13 +185,53 @@ sp_data$dist_suciedad <- nearest_amenity(sp_data, suciedad)
 
 #Alumbrado público
 alumbrado <- st_read("stores/Luminarias_UPZ.shp")%>%
-  st_transform(crs = 4326)
+  st_transform(crs = 4326) %>%
+  select(c(LED, Mh, Na, geometry))
 
-sp_data$alumbrado <- nearest_amenity(sp_data, alumbrado)
+sp_data <- sp_data %>%
+  st_join(alumbrado, join = st_nearest_feature) %>%
+  st_transform(4326)
 
-#Centro de Bogotá
-centro <- geocode_OSM("Centro Internacional, Bogota", as.sf = TRUE)
-sp_data$dist_centro <- nearest_amenity(sp_data, centro)
+#Crimen
+
+crimen <- st_read("stores/DAISCAT.gpkg")%>%
+  st_transform(crs = 3116) %>%
+  select(-c(CMIUSCAT, CMNOMSCAT, CMMES, CMHVAR, CMHTOTAL, CMLPVAR, CMLPTOTAL, CMHPVAR, CMHPTOTAL,
+            CMHAVAR, CMHATOTAL, CMHBVAR, CMHBTOTAL, CMHMVAR, CMHMTOTAL, CMHCVAR, CMHCTOTAL, CMHCEVAR, CMHCETOTAL,
+            CMHRVAR, CMHRTOTAL,CMVIVAR, CMVITOTAL,CMDSVAR, CMDSTOTAL, SHAPE_AREA, SHAPE_LEN))
+
+sp_data <- sp_data %>%
+  st_transform(3116) %>%
+  st_join(crimen, join = st_nearest_feature)%>%
+  st_transform(4326)
+
+#Calidad del aire 
+
+aire <- st_read("stores/pm25_promedio_anual.gpkg") %>%
+  st_transform(4326) %>%
+  filter(ano==2019) %>%
+  select(concpm25, geom)
+
+sp_data <- sp_data %>%
+  st_join(aire, join = st_nearest_feature) %>%
+  st_transform(4326)
+
+
+# Número de amenities en un radio -----------------------------------------
+
+rows_sp_data <- split(sp_data[, c("property_id","geometry")], 1:nrow(sp_data))
+
+#Restaurantes
+n_res <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,restaurant_bog_points, radius = 350)}))
+sp_data$n_restaurants <- unlist(n_res)
+
+#Parques
+n_parks <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,parques_bog_points, radius = 350)}))
+sp_data$n_parques <- unlist(n_parks)
+
+#Supermercado
+n_super <- unlist(lapply(rows_sp_data, function(x) {amenities_radius(x,supermarket_bog_points, radius = 350)}))
+sp_data$n_supermercados <- unlist(n_super)
 
 
 # Análisis de textos ------------------------------------------------------
@@ -236,11 +296,8 @@ test_descriptions_corpus <- VCorpus(VectorSource(test_descriptions), readerContr
 dense_dtm_test<-as.matrix(DocumentTermMatrix(test_descriptions_corpus, list(dictionary=words_train)))
 
 
-
-
-
-
-
-
-
+# Final dataset -----------------------------------------------------------
+saveRDS(sp_data, "stores/Bases Finales/sp_data_final.rds")
+saveRDS(dense_dtm_test, "stores/Bases Finales/DTM_test.rds")
+saveRDS(dense_dtm_train, "stores/Bases Finales/DTM_train.rds")
 

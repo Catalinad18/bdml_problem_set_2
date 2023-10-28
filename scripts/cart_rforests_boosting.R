@@ -4,12 +4,11 @@
 ##############################################################
 
 # Cargar datos y eliminar columnas que no son predictores ------------------------------------------------------------
-require(pacman)
 
 # Clean environment
 rm(list = ls())
 #-------------------------------------------
-
+require(pacman)
 p_load(tidymodels, 
        caret, 
        rpart, 
@@ -22,23 +21,19 @@ p_load(tidymodels,
        rattle, 
        spatialsample)
 
-source("variablesJ.R")
 
-# Load data ---------------------------------
-test_data <- read_csv("base_datos_limpia_test.csv")
-train_data <- read_csv("base_datos_limpia_train.csv")
+# Datos -------------------------------------------------------------------
 
-#Append data
-train_data <- train_data %>% mutate(type = "train")
-test_data <- test_data %>% mutate(type = "test")
+sp_data <- readRDS("stores/Bases Finales/sp_data_final.rds")
+dense_dtm_train <- readRDS("stores/Bases Finales/DTM_train.rds")
+dense_dtm_test <- readRDS("stores/Bases Finales/DTM_test.rds")
 
-data <- rbind(train_data, test_data)
 
 new_data <- sp_data %>%
   mutate(log_price=log(price)) %>%
-  select(-c(price, city, month, year, title, description, piso_info,
+  select(-c(price, city, month, year, title, description, piso_info, area, 
             precio_por_mt2, area, property_type_2,
-            geometry, operation_type, parqueadero, balcon, terraza)) %>%
+            geometry, operation_type)) %>%
   mutate(across(
     .cols = starts_with('dist'),
     .fns = list(sq = function(x) {x^2},
@@ -47,7 +42,8 @@ new_data <- sp_data %>%
   mutate(across(c(surface_covered, bedrooms, bathrooms),
                 .fns = list(sq = function(x) {x^2},
                             cube = function(x) {x^3}),
-                .names = "{.col}_{.fn}"))
+                .names = "{.col}_{.fn}")) %>%
+  mutate(ESTRATO=as.character(ESTRATO))
 
 new_train<- new_data %>%
   filter(type=="train") %>%
@@ -59,23 +55,38 @@ new_test<- new_data %>%
   select(-c(type, property_id)) %>%
   bind_cols(dense_dtm_test)
 
+#Coefs Lasso para seleccionar variables
+coefs_lasso <- read_csv("stores/Bases Finales/coefs_lasso.csv")
+selected_vars <- coefs_lasso$term[coefs_lasso$estimate==0]
+
+rm(coefs_lasso, dense_dtm_test, dense_dtm_train, sp_data)
+
 # Folds -------------------------------------------------------------------
 
-#Para la parametrizacion necesitamos folds espaciales.
-
-spatial_folds_trees <- group_vfold_cv(new_train, group = "NOMBRE")
+set.seed(123)
+block_folds <- spatial_block_cv(new_train, v = 5)
+#autoplot(block_folds)
 
 #RECETA PARA LOS MODELOS --------------------------------------------------
 
 #Recipe
 
+#Con todas las variables
 rec_trees_forests_boost <-
-  recipe(log_price ~ ., data = new_train) %>% 
-  step_rm(NOMBRE) %>%
+  recipe(log_price ~ ., data = select(as_tibble(new_train), -geometry)) %>% 
+  step_dummy(ESTRATO) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>%
   step_normalize(all_numeric_predictors(), -all_outcomes())
 
+#Quitando lasso
+rec_trees_forests_boost_select <-
+  recipe(log_price ~ ., data = select(as_tibble(new_train), -geometry)) %>% 
+  step_dummy(ESTRATO) %>%
+  step_dummy(all_nominal_predictors()) %>% 
+  step_zv(all_predictors()) %>%
+  step_rm(all_of(selected_vars)) %>%
+  step_normalize(all_numeric_predictors(), -all_outcomes())
 
 # CART --------------------------------------------------------------------
 
@@ -86,48 +97,49 @@ tree <- decision_tree(
 ) %>%
   set_mode("regression")
 
-tune_grid_tree <- grid_random(
-  tree_depth(range = c(1, 10)),
-  min_n(range = c(1, 20)),
-  size = 100
+tune_grid_tree <- grid_regular(
+  tree_depth(),
+  min_n(),
+  levels = c(10, 5)
 )
 
-#Workflow
+#Workflows
 
 workflow_tree <- workflow() %>%
-  add_recipe(rec_tree) %>%
+  add_recipe(rec_trees_forests_boost) %>%
+  add_model(tree)
+
+workflow_tree_lasso <- workflow() %>%
+  add_recipe(rec_trees_forests_boost_select) %>%
   add_model(tree)
 
 #Tune grid
 
 tune_tree <- workflow_tree %>% 
-  tune_grid(resamples = spatial_folds_trees,
+  tune_grid(resamples = block_folds,
             grid = tune_grid_tree,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-results_tuning_tree <- tune_tree %>%
-  collect_metrics()
+#results_tuning_tree <- tune_tree %>%
+ # collect_metrics()
 
-tune_tree %>%
-  collect_metrics() %>%
-  ggplot(aes(penalty, mean, color = .metric)) +
-  geom_line(size = 1.5) +
-  scale_x_log10() +
-  theme(legend.position = "none") +
-  labs(title = "RMSE")
+tune_tree_lasso <- workflow_tree_lasso %>% 
+  tune_grid(resamples = block_folds,
+            grid = tune_grid_tree,
+            metrics = metric_set(mae),
+            control=control_grid(verbose=TRUE))
+
+#results_tuning_tree_lasso <- tune_tree_lasso %>%
+  #collect_metrics()
 
 #Best Fit, Training and K-validation
-
-df_fold <- vfold_cv(train, v = 3)
-
 best_tree <- select_best(tune_tree, metric = "mae")
+best_tree_lasso <- select_best(tune_tree_lasso, metric = "mae")
 
 #Predict
-
 tree_final <- finalize_workflow(workflow_tree, best_tree)
-
-tree_final_fit <- fit(tree_final, data = new_test)
+tree_final_fit <- fit(tree_final, data = new_train)
 
 ## Exportar
 

@@ -18,7 +18,8 @@ new_data <- sp_data %>%
   mutate(across(c(surface_covered, bedrooms, bathrooms),
                 .fns = list(sq = function(x) {x^2},
                             cube = function(x) {x^3}),
-                .names = "{.col}_{.fn}"))
+                .names = "{.col}_{.fn}")) %>%
+  mutate(ESTRATO=as.character(ESTRATO))
 
 new_train<- new_data %>%
   filter(type=="train") %>%
@@ -34,7 +35,7 @@ new_test<- new_data %>%
 
 #Sólo para probar, usamos un tipo diferente de splits espaciales (k means)
 set.seed(123)
-block_folds <- spatial_block_cv(new_train, v = 15)
+block_folds <- spatial_block_cv(new_train, v = 10)
 autoplot(block_folds)
 
 # Lasso -------------------------------------------------------------------
@@ -49,6 +50,7 @@ lambda_grid_lasso <- grid_regular(penalty(), levels = 50) #Spatial cross validat
 lasso_rec <-
   recipe(log_price ~ ., data = select(as_tibble(new_train), -geometry)) %>% 
   #step_rm(NOMBRE) %>% #NOMBRE es la variable para el CV ahora, entonces no funcionan bien los efectos fijos. Vamos a ver. 
+  step_dummy(ESTRATO) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>%
   step_normalize(all_numeric_predictors(), -all_outcomes())
@@ -107,8 +109,9 @@ lasso_predictions <- predict(best_lasso_fit, new_test) %>%
   rename(c("property_id"="...2"))
 
 ## Exportar
-write_csv(lasso_predictions, "submissions/03_Lassov3.csv")
+write_csv(lasso_predictions, "submissions/03_Lasso_VF.csv")
 
+write_csv(coefs_lasso, "stores/Bases Finales/coefs_lasso.csv")
 
 # Ridge -------------------------------------------------------------------
 
@@ -181,7 +184,7 @@ ridge_predictions <- predict(best_ridge_fit, new_test) %>%
   rename(c("property_id"="...2"))
 
 ## Exportar
-write_csv(ridge_predictions, "submissions/04_Ridgev3.csv")
+write_csv(ridge_predictions, "submissions/04_RidgevF.csv")
 
 
 # Elastic Net -------------------------------------------------------------
