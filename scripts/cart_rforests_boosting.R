@@ -19,7 +19,9 @@ p_load(tidymodels,
        leaflet,
        randomForest,
        rattle, 
-       spatialsample)
+       spatialsample, 
+       doParallel, 
+       ranger)
 
 
 # Datos -------------------------------------------------------------------
@@ -59,13 +61,11 @@ new_test<- new_data %>%
 coefs_lasso <- read_csv("stores/Bases Finales/coefs_lasso.csv")
 selected_vars <- coefs_lasso$term[coefs_lasso$estimate==0]
 
-rm(coefs_lasso, dense_dtm_test, dense_dtm_train, sp_data)
-
 # Folds -------------------------------------------------------------------
 
 set.seed(123)
 block_folds <- spatial_block_cv(new_train, v = 5)
-#autoplot(block_folds)
+autoplot(block_folds)
 
 #RECETA PARA LOS MODELOS --------------------------------------------------
 
@@ -85,8 +85,8 @@ rec_trees_forests_boost_select <-
   step_dummy(ESTRATO) %>%
   step_dummy(all_nominal_predictors()) %>% 
   step_zv(all_predictors()) %>%
-  step_rm(all_of(selected_vars)) %>%
-  step_normalize(all_numeric_predictors(), -all_outcomes())
+  step_normalize(all_numeric_predictors(), -all_outcomes()) %>%
+  step_rm(all_of(selected_vars))
 
 # CART --------------------------------------------------------------------
 
@@ -121,17 +121,12 @@ tune_tree <- workflow_tree %>%
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-#results_tuning_tree <- tune_tree %>%
- # collect_metrics()
-
 tune_tree_lasso <- workflow_tree_lasso %>% 
   tune_grid(resamples = block_folds,
             grid = tune_grid_tree,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-#results_tuning_tree_lasso <- tune_tree_lasso %>%
-  #collect_metrics()
 
 #Best Fit, Training and K-validation
 best_tree <- select_best(tune_tree, metric = "mae")
@@ -141,65 +136,83 @@ best_tree_lasso <- select_best(tune_tree_lasso, metric = "mae")
 tree_final <- finalize_workflow(workflow_tree, best_tree)
 tree_final_fit <- fit(tree_final, data = new_train)
 
+tree_lasso_final <- finalize_workflow(workflow_tree_lasso, best_tree_lasso)
+tree_lasso_final_fit <- fit(tree_lasso_final, data = new_train)
+
+tree_predictions <- predict(tree_final_fit, new_test) %>%
+  bind_cols(test_data$property_id) %>%
+  mutate(price=exp(.pred)) %>%
+  select(-.pred) %>%
+  rename(c("property_id"="...2"))
+
+tree_lasso_predictions <- predict(tree_lasso_final_fit, new_test) %>%
+  bind_cols(test_data$property_id) %>%
+  mutate(price=exp(.pred)) %>%
+  select(-.pred) %>%
+  rename(c("property_id"="...2"))
+
 ## Exportar
 
-write_csv(tree_final_fit, "modeloArbol.csv")
+write_csv(tree_predictions, "submissions/tree.csv")
+write_csv(tree_lasso_predictions, "submissions/tree_lasso.csv")
 
 # RANDOM FORESTS--------------------------------------------------------------
 
+set.seed(123)
 #Model
 random_forest <- rand_forest(
-  mtry = tune(),
+  mtry = tune(), #default para probar. Usualmente lleva al optimo
   min_n = tune(),
   trees = tune(),
 ) %>%
-  set_engine("randomForest") %>%
+  set_engine("ranger") %>%
   set_mode("regression")
 
-random_forest_grid <- grid_random(  mtry(range = c(2, 4)),
-                                min_n(range = c(1, 10)),
-                                trees(range = c(100, 300)), size = 4)
+random_forest_grid <- grid_regular(mtry(range = c(26, 500)),
+                                   min_n(),
+                                   trees(range = c(1000, 2000)),
+                                   levels = c(10,5,5))
 
 #Workflow
-
 workflow_random_forest <- workflow() %>%
-  add_recipe(rec_1) %>%
+  add_recipe(rec_trees_forests_boost_select) %>%
   add_model(random_forest)
 
 #Tune grid
+registerDoParallel(cores = 8)
 
 tune_random_forest <- workflow_random_forest %>% 
-  tune_grid(resamples = spatial_folds_trees,
-            grid = random_forest_tree,
+  tune_grid(resamples = block_folds,
+            grid = random_forest_grid,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-results_tuning_random_forest <- tune_random_forest %>%
-  collect_metrics()
+stopImplicitCluster()
 
-tune_random_forest %>%
-  collect_metrics() %>%
-  ggplot(aes(penalty, mean, color = .metric)) +
-  geom_line(size = 1.5) +
-  scale_x_log10() +
-  theme(legend.position = "none") +
-  labs(title = "RMSE")
+#tune_random_forest %>%
+# collect_metrics() %>%
+#ggplot(aes(penalty, mean, color = .metric)) +
+#geom_line(size = 1.5) +
+#scale_x_log10() +
+#theme(legend.position = "none") +
+#labs(title = "RMSE")
 
 #Best Fit, Training and K-validation
-
-df_fold <- vfold_cv(train, v = 3)
-
 best_random_forest <- select_best(tune_random_forest, metric = "mae")
 
 #Predict
-
 random_forest_final <- finalize_workflow(workflow_random_forest, best_random_forest)
+random_forest_final_fit <- fit(random_forest_final, data = new_train)
 
-random_forest_final_fit <- fit(random_forest_final, data = new_test)
+random_forest_predictions <- predict(random_forest_final_fit, new_test) %>%
+  bind_cols(test_data$property_id) %>%
+  mutate(price=exp(.pred)) %>%
+  select(-.pred) %>%
+  rename(c("property_id"="...2"))
 
-## Exportar
+## Exportars
 
-write_csv(random_forest_final_fit, "submissions/modeloBosqueAleatorio.csv")
+write_csv(random_forest_predictions, "submissions/RandomForest.csv")
 
 # BOOSTING  --------------------------------------------------------------------
 
@@ -210,51 +223,46 @@ boost <- boost_tree(
   min_n = tune(),
   learn_rate = tune()
 ) %>%
-  set_mode("regression")  # Cambiar a modo de regresióntree <- decision_tree(
+  set_mode("regression")
 
 tune_grid_boost <- grid_random(
-  trees(range = c(400, 600)),
-  min_n(range = c(1, 3)),
-  learn_rate(range = c(0.001, 0.01)), size = 150
+  trees(),
+  min_n(),
+  learn_rate(), 
+  levels = c(5,5,20)
 )
 
 #Workflow
 
 workflow_boost <- workflow() %>%
-  add_recipe(rec_trees_forests_boost) %>%
+  add_recipe(rec_trees_forests_boost_select) %>%
   add_model(boost)
 
 #Tune grid
+registerDoParallel(cores = 8)
 
 tune_boost <- workflow_tree %>% 
-  tune_grid(resamples = spatial_folds_trees,
+  tune_grid(resamples = block_folds,
             grid = tune_grid_boost,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-results_tuning_boost <- tune_boost %>%
-  collect_metrics()
+stopImplicitCluster()
 
-tune_boost %>%
-  collect_metrics() %>%
-  ggplot(aes(penalty, mean, color = .metric)) +
-  geom_line(size = 1.5) +
-  scale_x_log10() +
-  theme(legend.position = "none") +
-  labs(title = "RMSE")
-
-#Best Fit, Training and K-validation
-
-df_fold <- vfold_cv(train, v = 3)
+#Best Fit, Training 
 
 best_boost <- select_best(tune_boost, metric = "mae")
+boost_final <- finalize_workflow(workflow_boost, best_boost)
+boost_final_fit <- fit(boost_final, data = new_train)
 
 #Predict
+boost_predictions <- predict(boost_final_fit, new_test) %>%
+  bind_cols(test_data$property_id) %>%
+  mutate(price=exp(.pred)) %>%
+  select(-.pred) %>%
+  rename(c("property_id"="...2"))
 
-boost_final <- finalize_workflow(workflow_boost, best_boost)
-
-boost_final_fit <- fit(boost_final, data = new_test)
 
 ## Exportar
 
-write_csv(boost_final_fit, "modeloAumentando.csv")
+write_csv(boost_final_fit, "submissions/Boost_Tree.csv")
