@@ -21,15 +21,18 @@ p_load(tidymodels,
        rattle, 
        spatialsample, 
        doParallel, 
-       ranger)
+       ranger, 
+       xgboost, 
+       lightgbm, 
+       bonsai)
 
 
 # Datos -------------------------------------------------------------------
-
+#setwd("/Users/santiagoherreragarcia/Documents/GitHub/uniandes/BDML/bdml_problem_set_2")
 sp_data <- readRDS("stores/Bases Finales/sp_data_final.rds")
 dense_dtm_train <- readRDS("stores/Bases Finales/DTM_train.rds")
 dense_dtm_test <- readRDS("stores/Bases Finales/DTM_test.rds")
-
+test_data <- read.csv("scripts/base_datos_limpia_test.csv")
 
 new_data <- sp_data %>%
   mutate(log_price=log(price)) %>%
@@ -38,9 +41,11 @@ new_data <- sp_data %>%
             geometry, operation_type)) %>%
   mutate(across(
     .cols = starts_with('dist'),
-    .fns = list(sq = function(x) {x^2},
-                cube = function(x) {x^3}),
+    .fns = list(sq = function(x) {as.numeric(x^2)},
+                cube = function(x) {as.numeric(x^3)}),
     .names = "{.col}_{.fn}")) %>%
+  mutate(across(
+    .cols = starts_with('dist'), as.numeric))%>%
   mutate(across(c(surface_covered, bedrooms, bathrooms),
                 .fns = list(sq = function(x) {x^2},
                             cube = function(x) {x^3}),
@@ -65,7 +70,7 @@ selected_vars <- coefs_lasso$term[coefs_lasso$estimate==0]
 
 set.seed(123)
 block_folds <- spatial_block_cv(new_train, v = 5)
-autoplot(block_folds)
+#autoplot(block_folds)
 
 #RECETA PARA LOS MODELOS --------------------------------------------------
 
@@ -82,12 +87,17 @@ rec_trees_forests_boost <-
 #Quitando lasso
 rec_trees_forests_boost_select <-
   recipe(log_price ~ ., data = select(as_tibble(new_train), -geometry)) %>% 
-  step_dummy(ESTRATO) %>%
-  step_dummy(all_nominal_predictors()) %>% 
+  step_rm(any_of(selected_vars)) %>%
   step_zv(all_predictors()) %>%
+  step_novel(NOMBRE, ESTRATO) %>%
   step_normalize(all_numeric_predictors(), -all_outcomes()) %>%
-  step_rm(all_of(selected_vars))
+  step_pca(all_numeric_predictors(), threshold = 0.75) #265 vars
+  #step_dummy(ESTRATO) %>%
+  #step_dummy(all_nominal_predictors()) %>% #Not necessary according to docs
 
+pre_train <- prep(rec_trees_forests_boost_select, new_data = new_train)
+bake_pre <- bake(pre_train, new_data = new_train)
+ 
 # CART --------------------------------------------------------------------
 
 #Model
@@ -165,37 +175,39 @@ random_forest <- rand_forest(
   min_n = tune(),
   trees = tune(),
 ) %>%
-  set_engine("ranger") %>%
+  set_engine("ranger", num.threads = 8) %>%
   set_mode("regression")
 
-random_forest_grid <- grid_regular(mtry(range = c(26, 500)),
+random_forest_grid <- grid_regular(mtry(range = c(10, 25)),
                                    min_n(),
-                                   trees(range = c(1000, 2000)),
-                                   levels = c(10,5,5))
+                                   trees(range = c(500,1000)),
+                                   levels = c(5,5,2))
 
 #Workflow
+
 workflow_random_forest <- workflow() %>%
   add_recipe(rec_trees_forests_boost_select) %>%
   add_model(random_forest)
 
 #Tune grid
 registerDoParallel(cores = 8)
-
 tune_random_forest <- workflow_random_forest %>% 
   tune_grid(resamples = block_folds,
             grid = random_forest_grid,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
-
 stopImplicitCluster()
 
-#tune_random_forest %>%
-# collect_metrics() %>%
-#ggplot(aes(penalty, mean, color = .metric)) +
-#geom_line(size = 1.5) +
-#scale_x_log10() +
-#theme(legend.position = "none") +
-#labs(title = "RMSE")
+metrics_rf <- tune_random_forest %>%
+ collect_metrics()
+
+plot_mtry <- ggplot(metrics_rf, aes(mtry, mean, color = .metric)) +
+    geom_line(size = 1.5) +
+    theme(legend.position = "none") +
+    ylab("MAE") +
+    xlab("Número de variables para los árboles (mtry)")
+
+ggsave("plotmtry.png", plot_mtry, dpi=300)
 
 #Best Fit, Training and K-validation
 best_random_forest <- select_best(tune_random_forest, metric = "mae")
@@ -210,11 +222,22 @@ random_forest_predictions <- predict(random_forest_final_fit, new_test) %>%
   select(-.pred) %>%
   rename(c("property_id"="...2"))
 
-## Exportars
+## Exportar
 
 write_csv(random_forest_predictions, "submissions/RandomForest.csv")
 
 # BOOSTING  --------------------------------------------------------------------
+
+rec_boost_select <-
+  recipe(log_price ~ ., data = select(as_tibble(new_train), -geometry)) %>% 
+  step_rm(any_of(selected_vars)) %>%
+  step_zv(all_predictors()) %>%
+  step_novel(NOMBRE, ESTRATO) %>%
+  step_normalize(all_numeric_predictors(), -all_outcomes()) %>%
+  step_pca(all_numeric_predictors(), threshold = 0.75) %>%
+  step_dummy(ESTRATO) %>%
+  step_dummy(all_nominal_predictors())
+
 
 #Model
 
@@ -223,13 +246,14 @@ boost <- boost_tree(
   min_n = tune(),
   learn_rate = tune()
 ) %>%
+  set_engine("lightgbm", nthreads = 8) %>%
   set_mode("regression")
 
-tune_grid_boost <- grid_random(
+tune_grid_boost <- grid_regular(
   trees(),
   min_n(),
   learn_rate(), 
-  levels = c(5,5,20)
+  levels = c(5,5,10)
 )
 
 #Workflow
@@ -239,15 +263,13 @@ workflow_boost <- workflow() %>%
   add_model(boost)
 
 #Tune grid
-registerDoParallel(cores = 8)
 
-tune_boost <- workflow_tree %>% 
+tune_boost <- workflow_boost %>% 
   tune_grid(resamples = block_folds,
             grid = tune_grid_boost,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-stopImplicitCluster()
 
 #Best Fit, Training 
 
