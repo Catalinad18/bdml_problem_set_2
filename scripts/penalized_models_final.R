@@ -4,7 +4,13 @@
 ##############################################################
 require(pacman)
 p_load("dplyr", "tidyverse", "sf", "leaflet", "Rcpp", "rio", "plotly", "tmaptools", "osmdata",
-       "tidymodels", "ggmap", "tm", "udpipe", "stringi", "gdata", "spatialsample", "glmnet")
+       "tidymodels", "ggmap", "tm", "udpipe", "stringi", "gdata", "spatialsample", "glmnet", "doParallel")
+
+sp_data <- readRDS("stores/Bases Finales/sp_data_final.rds")
+dense_dtm_train <- readRDS("stores/Bases Finales/DTM_train.rds")
+dense_dtm_test <- readRDS("stores/Bases Finales/DTM_test.rds")
+test_data <- read.csv("scripts/base_datos_limpia_test.csv")
+
 
 new_data <- sp_data %>%
   mutate(log_price=log(price)) %>% #Mejor log
@@ -35,7 +41,7 @@ new_test<- new_data %>%
 
 #Sólo para probar, usamos un tipo diferente de splits espaciales (k means)
 set.seed(123)
-block_folds <- spatial_block_cv(new_train, v = 10)
+block_folds <- spatial_block_cv(new_train, v = 5)
 autoplot(block_folds)
 
 # Lasso -------------------------------------------------------------------
@@ -62,29 +68,33 @@ lasso_wflow <-
   add_model(lasso) 
 
 #Tune grid
-
-tune_result <- lasso_wflow %>% 
+registerDoParallel()
+tune_result_lasso <- lasso_wflow %>% 
   tune_grid(resamples = block_folds,
             grid = lambda_grid_lasso,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
+stopImplicitCluster()
+stopImplicitCluster()
 
-results_tuning_lasso <- tune_result %>%
+results_tuning_lasso <- tune_result_lasso %>%
   collect_metrics()
 
-tune_result %>%
-  collect_metrics() %>%
+plot_lasso_penalty<- results_tuning_lasso %>%
   ggplot(aes(penalty, mean, color = .metric)) +
-  geom_line(size = 1.5) +
-  scale_x_log10() +
-  theme(legend.position = "none") +
-  labs(title = "RMSE")
+  geom_line(linewidth = 1) +
+  ylab("MAE") +
+  xlab("Penalidad (lambda)") + 
+  theme_bw() +
+  theme(legend.position = "none") 
+
+ggsave("views/plot_lasso_penalty.png", plot_lasso_penalty, dpi=300)
 
 #Best fit 
-tune_best <- tune_result %>% 
+tune_best_lasso <- tune_result_lasso %>% 
   select_best(metric = "mae")
 
-best_lasso <- linear_reg(penalty = tune_best$penalty, mixture = 1) %>%
+best_lasso <- linear_reg(penalty = tune_best_lasso$penalty, mixture = 1) %>%
   set_engine("glmnet")
 
 best_lasso_wflow <- 
@@ -137,17 +147,20 @@ ridge_wflow <-
   add_model(ridge) 
 
 #Tune grid
-
-tune_result <- ridge_wflow %>% 
+registerDoParallel()
+tune_result_ridge <- ridge_wflow %>% 
   tune_grid(resamples = block_folds,
             grid = lambda_grid_ridge,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
-results_tuning_ridge <- tune_result %>%
+stopImplicitCluster()
+stopImplicitCluster()
+
+results_tuning_ridge <- tune_result_ridge %>%
   collect_metrics()
 
-tune_result %>%
+tune_result_ridge %>%
   collect_metrics() %>%
   ggplot(aes(penalty, mean, color = .metric)) +
   geom_line(size = 1.5) +
@@ -156,10 +169,10 @@ tune_result %>%
   labs(title = "RMSE")
 
 #Best fit 
-tune_best <- tune_result %>% 
+tune_best_ridge <- tune_result_ridge %>% 
   select_best(metric = "mae")
 
-best_ridge <- linear_reg(penalty = tune_best$penalty, mixture = 0) %>%
+best_ridge <- linear_reg(penalty = tune_best_ridge$penalty, mixture = 0) %>%
   set_engine("glmnet")
 
 best_ridge_wflow <- 
@@ -193,7 +206,7 @@ write_csv(ridge_predictions, "submissions/04_RidgevF.csv")
 elasticnet <- linear_reg(penalty = tune(), mixture = tune()) %>%
   set_engine("glmnet")
 
-lambda_grid_elasticnet <- grid_regular(penalty(), mixture(), levels = 50) #Spatial cross validation
+lambda_grid_elasticnet <- grid_regular(penalty(), mixture(), levels = c(30, 30)) #Spatial cross validation
 
 #Recipe
 elasticnet_rec <-
@@ -210,23 +223,15 @@ elasticnet_wflow <-
   add_model(elasticnet) 
 
 #Tune grid
-
+registerDoParallel()
 tune_result <- elasticnet_wflow %>% 
   tune_grid(resamples = block_folds,
             grid = lambda_grid_elasticnet,
             metrics = metric_set(mae),
-            control=control_grid(verbose=TRUE, parallel_over = "everything"))
-
+            control=control_grid(verbose=TRUE))
+stopImplicitCluster()
 results_tuning_elasticnet <- tune_result %>%
   collect_metrics()
-
-tune_result %>%
-  collect_metrics() %>%
-  ggplot(aes(penalty, mean, color = .metric)) +
-  geom_line(size = 1.5) +
-  scale_x_log10() +
-  theme(legend.position = "none") +
-  labs(title = "MAE")
 
 #Best fit 
 tune_best <- tune_result %>% 
@@ -257,4 +262,4 @@ elasticnet_predictions <- predict(best_elasticnet_fit, new_test) %>%
   rename(c("property_id"="...2"))
 
 ## Exportar
-write_csv(elasticnet_predictions, "submissions/05_ElasticNetv3.csv")
+write_csv(elasticnet_predictions, "submissions/ElasticNetBest.csv")

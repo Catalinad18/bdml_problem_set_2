@@ -70,8 +70,10 @@ selected_vars <- coefs_lasso$term[coefs_lasso$estimate==0]
 
 set.seed(123)
 block_folds <- spatial_block_cv(new_train, v = 5)
-#autoplot(block_folds)
+cv_graph <- autoplot(block_folds) +
+  theme_bw()
 
+ggsave("views/spatial_blocks.png",cv_graph, dpi=300)
 #RECETA PARA LOS MODELOS --------------------------------------------------
 
 #Recipe
@@ -125,31 +127,36 @@ workflow_tree_lasso <- workflow() %>%
 
 #Tune grid
 
-tune_tree <- workflow_tree %>% 
-  tune_grid(resamples = block_folds,
-            grid = tune_grid_tree,
-            metrics = metric_set(mae),
-            control=control_grid(verbose=TRUE))
-
+#tune_tree <- workflow_tree %>% 
+ # tune_grid(resamples = block_folds,
+  #          grid = tune_grid_tree,
+   #         metrics = metric_set(mae),
+    #        control=control_grid(verbose=TRUE))
+registerDoParallel(cores = 8)
 tune_tree_lasso <- workflow_tree_lasso %>% 
   tune_grid(resamples = block_folds,
             grid = tune_grid_tree,
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
+stopImplicitCluster()
+stopImplicitCluster()
+
+metrics_tree_lasso <- tune_tree_lasso %>%
+  collect_metrics()
 
 #Best Fit, Training and K-validation
-best_tree <- select_best(tune_tree, metric = "mae")
+#best_tree <- select_best(tune_tree, metric = "mae")
 best_tree_lasso <- select_best(tune_tree_lasso, metric = "mae")
 
 #Predict
-tree_final <- finalize_workflow(workflow_tree, best_tree)
+#tree_final <- finalize_workflow(workflow_tree, best_tree)
 tree_final_fit <- fit(tree_final, data = new_train)
 
-tree_lasso_final <- finalize_workflow(workflow_tree_lasso, best_tree_lasso)
+#tree_lasso_final <- finalize_workflow(workflow_tree_lasso, best_tree_lasso)
 tree_lasso_final_fit <- fit(tree_lasso_final, data = new_train)
 
-tree_predictions <- predict(tree_final_fit, new_test) %>%
+#tree_predictions <- predict(tree_final_fit, new_test) %>%
   bind_cols(test_data$property_id) %>%
   mutate(price=exp(.pred)) %>%
   select(-.pred) %>%
@@ -163,7 +170,7 @@ tree_lasso_predictions <- predict(tree_lasso_final_fit, new_test) %>%
 
 ## Exportar
 
-write_csv(tree_predictions, "submissions/tree.csv")
+#write_csv(tree_predictions, "submissions/tree.csv")
 write_csv(tree_lasso_predictions, "submissions/tree_lasso.csv")
 
 # RANDOM FORESTS--------------------------------------------------------------
@@ -201,13 +208,16 @@ stopImplicitCluster()
 metrics_rf <- tune_random_forest %>%
  collect_metrics()
 
-plot_mtry <- ggplot(metrics_rf, aes(mtry, mean, color = .metric)) +
-    geom_line(size = 1.5) +
-    theme(legend.position = "none") +
-    ylab("MAE") +
-    xlab("Número de variables para los árboles (mtry)")
+plot_mtry<- metrics_rf %>%
+  filter(trees==1000 & min_n ==2) %>%
+  ggplot(aes(mtry, mean, color = .metric)) +
+  geom_line(size = 1.5) +
+  ylab("MAE") +
+  xlab("Número de predictores escogidos aleatoriamente (mtry)") + 
+  theme_bw() +
+  theme(legend.position = "none") 
 
-ggsave("plotmtry.png", plot_mtry, dpi=300)
+ggsave("views/plot_mtry.png", plot_mtry, dpi=300)
 
 #Best Fit, Training and K-validation
 best_random_forest <- select_best(tune_random_forest, metric = "mae")
@@ -270,6 +280,37 @@ tune_boost <- workflow_boost %>%
             metrics = metric_set(mae),
             control=control_grid(verbose=TRUE))
 
+metrics_boost <- tune_boost %>%
+  collect_metrics()
+
+plot_trees <- ggplot(metrics_boost, aes(trees, mean, color = .metric)) +
+  geom_line(size = 1.25) +
+  theme(legend.position = "none") +
+  ylab("MAE") +
+  xlab("Número de árboles (trees)") +
+  theme_bw()
+
+plot_learn_rate<- metrics_boost %>%
+  filter(trees==2000 & min_n ==40) %>%
+  ggplot(aes(learn_rate, mean, color = .metric)) +
+  geom_line(size = 1.5) +
+  ylab("MAE") +
+  xlab("Tasa de aprendizaje (learn_rate)") + 
+  theme_bw() +
+  theme(legend.position = "none") 
+
+plot_min_n_boost <- metrics_boost %>%
+  select(min_n, mean) %>%
+  unique() %>%
+  ggplot(aes(min_n, mean)) +
+  geom_line(size = 1.5) +
+  theme(legend.position = "none") +
+  ylab("MAE") +
+  xlab("Observaciones mínimas por hoja terminal (min_n)")
+
+ggsave("views/boost_trees.png", plot_trees, dpi=300)
+ggsave("views/boost_learnrate.png", plot_learn_rate, dpi=300)
+ggsave("views/boost_min_n.png", plot_min_n_boost, dpi=300)
 
 #Best Fit, Training 
 
@@ -287,4 +328,4 @@ boost_predictions <- predict(boost_final_fit, new_test) %>%
 
 ## Exportar
 
-write_csv(boost_final_fit, "submissions/Boost_Tree.csv")
+write_csv(boost_predictions, "submissions/Boost_Tree.csv")
